@@ -205,24 +205,42 @@ watch(
 
 const search = () => {
   console.log('[SearchBar] search called. searchValue.value:', searchValue.value);
-  const { value } = searchValue;
-  if (value === '') {
-    searchValue.value = hotSearchValue.value;
-    return;
-  }
+  let keywordToSearch = searchValue.value; // 使用 let 以便修改
 
-  if (router.currentRoute.value.path === '/search') {
-    searchStore.searchValue = value;
-    return;
-  }
-
-  router.push({
-    path: '/search',
-    query: {
-      keyword: value,
-      type: searchStore.searchType
+  if (keywordToSearch === '') {
+    if (hotSearchValue.value) { // 确保 hotSearchValue 有值
+      searchValue.value = hotSearchValue.value; // 填充输入框
+      keywordToSearch = hotSearchValue.value;   // 更新要搜索的关键词
+    } else {
+      // 如果连热搜词都没有，那就真的不执行搜索了
+      return;
     }
-  });
+  }
+
+  // 如果当前已经在 /search 路径下
+  if (router.currentRoute.value.path === '/search') {
+    // 确保 searchStore 的值被更新，这将触发 search/index.vue 中的 watch
+    searchStore.searchValue = keywordToSearch; 
+    // 如果 searchStore.searchType 也需要在这里同步更新，可以加上
+    // searchStore.searchType = searchStore.searchType; // 或者从某个地方获取当前的类型
+    // 通常，如果只是关键词变了，searchType 可能不需要重新设置，search/index.vue 的 watch 会用 store 里当前的 type
+  } else {
+    // 如果不在 /search 路径下，则跳转
+    router.push({
+      path: '/search',
+      query: {
+        keyword: keywordToSearch,
+        type: searchStore.searchType // 使用 store 中当前的搜索类型
+      }
+    });
+  }
+  // 注意：原先在 router.currentRoute.value.path === '/search' 分支中的 return 被移除了
+  // 因为无论是否在 /search 页面，只要确定了 keywordToSearch，都应该继续执行后续逻辑
+  // （更新 store 或 跳转），而不是在特定条件下提前返回。
+  // 实际上，上面的逻辑已经覆盖了：
+  // - 在 /search 页: 更新 store (searchStore.searchValue = keywordToSearch;)
+  // - 不在 /search 页: 跳转 (router.push(...))
+  // 这两种操作都会最终触发 search/index.vue 中的监听器来执行 loadSearch。
 };
 
 const selectSearchType = (key: number) => {
