@@ -38,6 +38,13 @@ request.interceptors.request.use(
       config.retryCount = 0;
     }
 
+    // 添加调试日志
+    console.log(`[API请求] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, {
+      params: config.params,
+      data: config.data,
+      retryCount: config.retryCount
+    });
+
     // 在请求发送之前做一些处理
     // 在get请求params中添加timestamp
     config.params = {
@@ -67,6 +74,7 @@ request.interceptors.request.use(
   },
   (error) => {
     // 当请求异常时做一些处理
+    console.error('[API请求错误]', error);
     return Promise.reject(error);
   }
 );
@@ -76,10 +84,28 @@ const NO_RETRY_URLS = ['暂时没有'];
 // 响应拦截器
 request.interceptors.response.use(
   (response) => {
+    // 添加调试日志
+    console.log(`[API响应] ${response.config.method?.toUpperCase()} ${response.config.url}`, {
+      status: response.status,
+      statusText: response.statusText,
+      dataPreview: response.data ? (typeof response.data === 'object' ? '对象数据' : '非对象数据') : '无数据'
+    });
     return response;
   },
   async (error) => {
-    console.error('error', error);
+    console.error('[API响应错误]', error.message, error.config?.url);
+
+    // 添加更详细的错误信息
+    if (error.response) {
+      console.error('[API响应详情]', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data
+      });
+    } else if (error.request) {
+      console.error('[API请求未收到响应]', error.request);
+    }
+
     const config = error.config as CustomAxiosRequestConfig;
 
     // 如果没有配置，直接返回错误
@@ -92,7 +118,7 @@ request.interceptors.response.use(
       // 使用 store mutation 清除用户信息
       const userStore = useUserStore();
       userStore.handleLogout();
-      console.log(`301 状态码，清除登录信息后重试第 ${config.retryCount} 次`);
+      console.log(`[API] 301 状态码，清除登录信息后重试第 ${config.retryCount} 次`);
       config.retryCount = 3;
     }
 
@@ -103,7 +129,7 @@ request.interceptors.response.use(
       !NO_RETRY_URLS.includes(config.url as string)
     ) {
       config.retryCount++;
-      console.error(`请求重试第 ${config.retryCount} 次`);
+      console.log(`[API] 请求重试第 ${config.retryCount} 次: ${config.url}`);
 
       // 延迟重试
       await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
@@ -112,7 +138,7 @@ request.interceptors.response.use(
       return request(config);
     }
 
-    console.error(`重试${MAX_RETRIES}次后仍然失败`);
+    console.error(`[API] 重试${MAX_RETRIES}次后仍然失败: ${config.url}`);
     return Promise.reject(error);
   }
 );

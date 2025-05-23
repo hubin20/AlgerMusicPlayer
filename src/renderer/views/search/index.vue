@@ -145,7 +145,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
 
@@ -230,22 +230,47 @@ const loadHotSearch = async () => {
 };
 
 onMounted(() => {
+  console.log('[Search] 组件挂载: 开始加载热搜和搜索历史');
   loadHotSearch();
   loadSearchHistory();
+  
+  // 组件挂载后，检查路由参数或store中是否有搜索关键词
+  if (route.query.keyword && route.name === 'Search') {
+    const typeFromQuery = route.query.type ? Number(route.query.type) : searchStore.searchType;
+    console.log(`[Search] 从路由参数加载搜索: 关键词=${route.query.keyword}, 类型=${typeFromQuery}`);
+    // 使用 nextTick 确保组件完全挂载后再执行搜索
+    nextTick(() => {
+      loadSearch(route.query.keyword as string, typeFromQuery, false);
+    });
+  } else if (searchStore.searchValue && route.name === 'Search') {
+    console.log(`[Search] 从store加载搜索: 关键词=${searchStore.searchValue}, 类型=${searchStore.searchType}`);
+    // 使用 nextTick 确保组件完全挂载后再执行搜索
+    nextTick(() => {
+      loadSearch(searchStore.searchValue, searchStore.searchType, false);
+    });
+  }
 });
 
 const hotKeyword = ref(route.query.keyword || t('search.title.searchList'));
 
 const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) => {
-  console.log('[Search] loadSearch called. Keywords:', keywords, 'Type from param:', type);
-  const searchTypeToUse = type !== null ? type : searchType.value;
-  console.log('[Search] searchTypeToUse:', searchTypeToUse, 'searchType.value from store:', searchType.value);
-
   if (!keywords) return;
+
+  const searchTypeToUse = type !== null ? type : searchType.value;
+
+  // 添加调试日志
+  console.log(`[Search] 开始搜索: 关键词=${keywords}, 类型=${searchTypeToUse}, 是否加载更多=${isLoadMore}`);
 
   if (!isLoadMore) {
     hotKeyword.value = keywords;
-    searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
+    // 确保 searchDetail 被正确初始化为一个有效对象
+    searchDetail.value = { 
+      songs: [], 
+      albums: [], 
+      playlists: [], 
+      mvs: [], 
+      kwSongs: [] 
+    };
     page.value = 0;
     hasMore.value = true;
     currentKeyword.value = keywords;
@@ -261,6 +286,7 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
 
   try {
     page.value++;
+    console.log(`[Search] 页码: ${page.value}, 每页数量: ${ITEMS_PER_PAGE}`);
 
     const neteasePromise = getSearch({
       keywords,
@@ -274,7 +300,9 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
       ? searchKwMusic(keywords, page.value, ITEMS_PER_PAGE, searchTypeToUse)
       : Promise.resolve([]); // 其他类型则返回空数组
 
+    console.log(`[Search] 发送请求: 网易云和酷我API`);
     const [neteaseRes, kwRes] = await Promise.allSettled([neteasePromise, kwSongsPromise]);
+    console.log(`[Search] 请求完成: 网易云状态=${neteaseRes.status}, 酷我状态=${kwRes.status}`);
 
     let neteaseSongs: SongResult[] = [];
     let neteaseAlbums: AlbumItem[] = [];
@@ -287,6 +315,8 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
 
     if (neteaseRes.status === 'fulfilled' && neteaseRes.value?.data?.result) {
       const neteaseResult = neteaseRes.value.data.result;
+      console.log(`[Search] 网易云API返回数据:`, JSON.stringify(neteaseResult).substring(0, 100) + '...');
+      
       // 根据 searchTypeToUse 处理不同类型的结果
       switch (searchTypeToUse) {
         case SEARCH_TYPE.MUSIC:
@@ -472,12 +502,22 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
           break;
       }
     } else if (neteaseRes.status === 'fulfilled' && !neteaseRes.value?.data?.result && !neteaseRes.value?.data?.mvs) {
-      console.warn('Netease API success but no result data received.');
+      console.warn('[Search] 网易云API成功但没有返回结果数据:', neteaseRes.value);
+    } else if (neteaseRes.status === 'rejected') {
+      console.error('[Search] 网易云API请求失败:', neteaseRes.reason);
     }
 
     if (kwRes.status === 'fulfilled' && kwRes.value && Array.isArray(kwRes.value)) {
       kwSongsResult = kwRes.value;
       currentKwHasMore = kwSongsResult.length === ITEMS_PER_PAGE;
+      console.log(`[Search] 酷我API返回歌曲数量: ${kwSongsResult.length}`);
+    } else if (kwRes.status === 'rejected') {
+      console.error('[Search] 酷我API请求失败:', kwRes.reason);
+    }
+
+    // 确保 searchDetail.value 始终是有效对象
+    if (!searchDetail.value) {
+      searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
     }
 
     if (isLoadMore) {
@@ -506,10 +546,11 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
         }
       }
     } else {
-      // Ensure searchDetail.value is not null before assigning
+      // 确保 searchDetail.value 被正确初始化
       searchDetail.value = {
-        songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] // Initialize structure
+        songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] // 初始化结构
       };
+      
       if (searchTypeToUse === SEARCH_TYPE.MUSIC) {
         let combinedSongs = [...neteaseSongs, ...kwSongsResult];
         combinedSongs.sort((a, b) => {
@@ -531,44 +572,71 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
         searchDetail.value.kwSongs = kwSongsResult; // kwSongs are separate for other types if fetched
         searchDetail.value.songs = neteaseSongs; // Netease songs for other types if any
       }
+      
+      console.log(`[Search] 搜索结果统计: 歌曲=${searchDetail.value.songs.length}, 专辑=${searchDetail.value.albums.length}, 歌单=${searchDetail.value.playlists.length}, MV=${searchDetail.value.mvs.length}, 酷我歌曲=${searchDetail.value.kwSongs.length}`);
     }
 
     hasMore.value = currentNeteaseHasMore || currentKwHasMore;
+    console.log(`[Search] 是否有更多结果: ${hasMore.value}`);
 
   } catch (e) {
-    console.error('搜索失败:', e);
-    if (!isLoadMore) {
+    console.error('[Search] 搜索失败:', e);
+    // 确保即使出错也有一个有效的 searchDetail 对象
+    if (!searchDetail.value) {
       searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
     }
     hasMore.value = false;
   } finally {
     searchDetailLoading.value = false;
     isLoadingMore.value = false;
+    console.log(`[Search] 搜索完成: loading=${searchDetailLoading.value}, loadingMore=${isLoadingMore.value}`);
   }
 };
 
 watch(
+  () => route.query,
+  (newQuery) => {
+    console.log('[Search] 路由参数变化:', newQuery);
+    if (newQuery.keyword && route.name === 'Search') {
+      const typeFromQuery = newQuery.type ? Number(newQuery.type) : searchStore.searchType;
+      console.log(`[Search] 路由参数变化触发搜索: 关键词=${newQuery.keyword}, 类型=${typeFromQuery}`);
+      searchStore.searchType = typeFromQuery;
+      searchStore.searchValue = newQuery.keyword as string;
+      // 不需要在这里调用 loadSearch，因为 watch searchStore.searchValue 会触发搜索
+    } else if (route.name === 'Search' && !newQuery.keyword) {
+      console.log('[Search] 路由参数变化: 无关键词，清空搜索结果');
+      searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
+      hotKeyword.value = t('search.title.searchList');
+    }
+  },
+  { immediate: true, deep: true }
+);
+
+watch(
   () => searchStore.searchValue,
   (value) => {
-    if (value) loadSearch(value, searchStore.searchType, false);
+    console.log(`[Search] 搜索值变化: ${value}`);
+    if (value) {
+      // 使用 nextTick 确保在下一个 DOM 更新周期执行搜索
+      nextTick(() => {
+        loadSearch(value, searchStore.searchType, false);
+      });
+    }
   }
 );
 
 watch(
   () => searchType.value,
   (newType) => {
+    console.log(`[Search] 搜索类型变化: ${newType}`);
     if (searchStore.searchValue) {
-      loadSearch(searchStore.searchValue, newType, false);
+      // 使用 nextTick 确保在下一个 DOM 更新周期执行搜索
+      nextTick(() => {
+        loadSearch(searchStore.searchValue, newType, false);
+      });
     }
   }
 );
-
-if (route.query.keyword && route.name === 'Search') {
-  const typeFromQuery = route.query.type ? Number(route.query.type) : searchStore.searchType;
-  loadSearch(route.query.keyword as string, typeFromQuery, false);
-} else if (searchStore.searchValue && route.name === 'Search') {
-    loadSearch(searchStore.searchValue, searchStore.searchType, false);
-}
 
 const handleScroll = (e: any) => {
   const { scrollTop, scrollHeight, clientHeight } = e.target;
@@ -576,21 +644,6 @@ const handleScroll = (e: any) => {
     loadSearch(currentKeyword.value, searchType.value, true);
   }
 };
-
-watch(
-  () => route.query,
-  (newQuery) => {
-    if (newQuery.keyword && route.name === 'Search') {
-      const typeFromQuery = newQuery.type ? Number(newQuery.type) : searchStore.searchType;
-      searchStore.searchType = typeFromQuery;
-      searchStore.searchValue = newQuery.keyword as string;
-    } else if (route.name === 'Search' && !newQuery.keyword) {
-      searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
-      hotKeyword.value = t('search.title.searchList');
-    }
-  },
-  { immediate: true, deep: true }
-);
 
 const handlePlay = (item: SongResult) => {
   playerStore.addToNextPlay(item);
