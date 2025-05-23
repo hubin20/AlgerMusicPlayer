@@ -237,6 +237,7 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
 
   if (!isLoadMore) {
     hotKeyword.value = keywords;
+    // 初始化 searchDetail 结构，所有类型的数组都为空
     searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
     page.value = 0;
     hasMore.value = true;
@@ -253,34 +254,18 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
 
   try {
     page.value++;
-
-    const neteasePromise = getSearch({
-      keywords,
-      type: searchTypeToUse,
-      limit: ITEMS_PER_PAGE,
-      offset: (page.value - 1) * ITEMS_PER_PAGE
-    });
-
-    // 仅当搜索类型为单曲时，才同时请求酷我歌曲
-    const kwSongsPromise = searchTypeToUse === SEARCH_TYPE.MUSIC 
-      ? searchKwMusic(keywords, page.value, ITEMS_PER_PAGE, searchTypeToUse)
-      : Promise.resolve([]); // 其他类型则返回空数组
-
-    const [neteaseRes, kwRes] = await Promise.allSettled([neteasePromise, kwSongsPromise]);
-
-    let neteaseSongs: SongResult[] = [];
-    let neteaseAlbums: AlbumItem[] = [];
-    let neteasePlaylists: PlaylistItem[] = [];
-    let neteaseMvs: MvItem[] = [];
-    let kwSongsResult: SongResult[] = [];
-
     let currentNeteaseHasMore = false;
-    let currentKwHasMore = false;
+    let currentKwHasMore = false; // 仅用于单曲
 
-    if (neteaseRes.status === 'fulfilled' && neteaseRes.value?.data?.result) {
-      const neteaseResult = neteaseRes.value.data.result;
-      if (searchTypeToUse === SEARCH_TYPE.MUSIC && neteaseResult.songs) {
-        neteaseSongs = neteaseResult.songs.map((song: any): SongResult => {
+    // --- 单曲搜索逻辑分支 ---
+    if (searchTypeToUse === SEARCH_TYPE.MUSIC) {
+      const neteasePromise = getSearch({ keywords, type: SEARCH_TYPE.MUSIC, limit: ITEMS_PER_PAGE, offset: (page.value - 1) * ITEMS_PER_PAGE });
+      const kwPromise = searchKwMusic(keywords, page.value, ITEMS_PER_PAGE, SEARCH_TYPE.MUSIC);
+      const [neteaseRes, kwRes] = await Promise.allSettled([neteasePromise, kwPromise]);
+
+      let neteaseSongs: SongResult[] = [];
+      if (neteaseRes.status === 'fulfilled' && neteaseRes.value?.data?.result?.songs) {
+        neteaseSongs = neteaseRes.value.data.result.songs.map((song: any): SongResult => {
           const artists = (song.ar || song.artists || []).map((a: any): Artist => ({
             id: a.id || 0, name: a.name || '未知歌手', picId: a.picId || 0, img1v1Id: a.img1v1Id || 0,
             briefDesc: a.briefDesc || '', picUrl: a.picUrl || '', img1v1Url: a.img1v1Url || '',
@@ -288,159 +273,153 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
             musicSize: a.musicSize || 0, topicPerson: a.topicPerson || 0,
           }));
           return {
-            id: song.id,
-            name: song.name,
+            id: song.id, name: song.name,
             picUrl: song.al?.picUrl || song.album?.picUrl || song.al?.coverUrl || song.album?.coverUrl || '',
-            duration: song.dt || song.duration || 0,
-            artists: artists,
+            duration: song.dt || song.duration || 0, artists: artists,
             album: {
-              id: song.al?.id || song.album?.id || 0,
-              name: song.al?.name || song.album?.name || '未知专辑',
+              id: song.al?.id || song.album?.id || 0, name: song.al?.name || song.album?.name || '未知专辑',
               picUrl: song.al?.picUrl || song.album?.picUrl || song.al?.coverUrl || song.album?.coverUrl || '',
             },
-            source: 'netease', // 明确来源为网易云
-            type: 'music', // 明确类型为音乐
-            privilege: song.privilege, // 保留权限信息
-            fee: song.fee, // 保留费用信息
-            sq: song.sq, // 保留无损音质信息
-            hr: song.hr, // 保留Hi-Res音质信息
-            pl: song.pl // 保留播放等级信息
+            source: 'netease', type: 'music', privilege: song.privilege, fee: song.fee, sq: song.sq, hr: song.hr, pl: song.pl
           };
         });
-        currentNeteaseHasMore = neteaseResult.songs.length === ITEMS_PER_PAGE;
-      } else if (searchTypeToUse === SEARCH_TYPE.ALBUM && neteaseResult.albums) {
-        neteaseAlbums = neteaseResult.albums.map((album: any): AlbumItem => ({
-          id: album.id,
-          name: album.name,
-          picUrl: album.picUrl,
-          artistName: album.artist?.name || (album.artists && album.artists[0]?.name) ||'未知艺术家',
-          artists: album.artists || (album.artist ? [album.artist] : []),
-          size: album.size, // 曲目数
-          publishTime: album.publishTime,
-          company: album.company,
-          type: 'album', // 类型为专辑
-          desc: album.company || `艺人: ${album.artist?.name || (album.artists && album.artists[0]?.name) || '未知'}`,
+        currentNeteaseHasMore = neteaseRes.value.data.result.songs.length === ITEMS_PER_PAGE;
+      }
+
+      let kwSongs: SongResult[] = [];
+      if (kwRes.status === 'fulfilled' && kwRes.value && Array.isArray(kwRes.value)) {
+        kwSongs = kwRes.value;
+        currentKwHasMore = kwRes.value.length === ITEMS_PER_PAGE;
+      }
+
+      if (isLoadMore && searchDetail.value) {
+        searchDetail.value.songs = [...searchDetail.value.songs, ...neteaseSongs, ...kwSongs].sort((_a, _b) => 0);
+      } else {
+        searchDetail.value = {
+          songs: [...neteaseSongs, ...kwSongs].sort((_a, _b) => 0),
+          albums: [], playlists: [], mvs: [], kwSongs: [] // 其他类型清空
+        };
+      }
+      hasMore.value = currentNeteaseHasMore || currentKwHasMore;
+
+    // --- 歌单搜索逻辑分支 ---
+    } else if (searchTypeToUse === SEARCH_TYPE.PLAYLIST) {
+      const neteaseRes = await getSearch({ keywords, type: SEARCH_TYPE.PLAYLIST, limit: ITEMS_PER_PAGE, offset: (page.value - 1) * ITEMS_PER_PAGE });
+      let playlistsToSet: PlaylistItem[] = [];
+      let songsFromPlaylist: SongResult[] = []; // 歌单API可能返回的歌曲
+
+      if (neteaseRes?.data?.result?.playlists) {
+        playlistsToSet = neteaseRes.data.result.playlists.map((pl: any): PlaylistItem => ({
+          id: pl.id, name: pl.name, picUrl: pl.coverImgUrl || pl.picUrl,
+          playCount: pl.playCount, trackCount: pl.trackCount,
+          creator: pl.creator?.nickname || '未知创建者', type: 'playlist',
+          desc: pl.description || `包含 ${pl.trackCount} 首歌`, source: 'netease'
+        }));
+        currentNeteaseHasMore = neteaseRes.data.result.playlists.length === ITEMS_PER_PAGE;
+        
+        // 假设网易云歌单搜索结果中不直接内嵌歌曲列表，如果需要，需额外逻辑获取
+        // 如果API确实在playlist搜索结果中也返回了songs (如neteaseRes.data.result.songs)
+        // 则需要像下面专辑分支一样处理 songsFromPlaylist
+      }
+
+      if (isLoadMore && searchDetail.value) {
+        searchDetail.value.playlists = [...searchDetail.value.playlists, ...playlistsToSet];
+        // searchDetail.value.songs = [...searchDetail.value.songs, ...songsFromPlaylist]; // 如果有附带歌曲
+      } else {
+        searchDetail.value = {
+          songs: songsFromPlaylist, // 歌单附带的歌曲
+          albums: [], playlists: playlistsToSet, mvs: [], kwSongs: [] // 其他类型清空
+        };
+      }
+      hasMore.value = currentNeteaseHasMore;
+
+    // --- 专辑搜索逻辑分支 ---
+    } else if (searchTypeToUse === SEARCH_TYPE.ALBUM) {
+      const neteaseRes = await getSearch({ keywords, type: SEARCH_TYPE.ALBUM, limit: ITEMS_PER_PAGE, offset: (page.value - 1) * ITEMS_PER_PAGE });
+      let albumsToSet: AlbumItem[] = [];
+      let songsFromAlbum: SongResult[] = []; // 专辑API可能返回的歌曲
+
+      if (neteaseRes?.data?.result?.albums) {
+        albumsToSet = neteaseRes.data.result.albums.map((al: any): AlbumItem => ({
+          id: al.id, name: al.name, picUrl: al.picUrl,
+          artistName: al.artist?.name || (al.artists && al.artists[0]?.name) || '未知艺术家',
+          artists: al.artists || (al.artist ? [al.artist] : []),
+          size: al.size, publishTime: al.publishTime, company: al.company, type: 'album',
+          desc: al.company || `艺人: ${al.artist?.name || (al.artists && al.artists[0]?.name) || '未知'}`,
           source: 'netease'
         }));
-        currentNeteaseHasMore = neteaseResult.albums.length === ITEMS_PER_PAGE;
-      } else if (searchTypeToUse === SEARCH_TYPE.PLAYLIST && neteaseResult.playlists) {
-        neteasePlaylists = neteaseResult.playlists.map((playlist: any): PlaylistItem => ({
-          id: playlist.id,
-          name: playlist.name,
-          picUrl: playlist.coverImgUrl || playlist.picUrl,
-          playCount: playlist.playCount,
-          trackCount: playlist.trackCount,
-          creator: playlist.creator?.nickname || '未知创建者',
-          type: 'playlist',
-          desc: playlist.description || `包含 ${playlist.trackCount} 首歌`,
-          source: 'netease'
-        }));
-        currentNeteaseHasMore = neteaseResult.playlists.length === ITEMS_PER_PAGE;
-      } else if (searchTypeToUse === SEARCH_TYPE.MV && neteaseResult.mvs) {
-        neteaseMvs = neteaseResult.mvs.map((mv: any): MvItem => {
-          console.log('MV duration original value:', mv.duration); // 临时打印 duration
-          const durationInSeconds = Math.round(mv.duration / 1000); // 假设是毫秒，转为秒
+        currentNeteaseHasMore = neteaseRes.data.result.albums.length === ITEMS_PER_PAGE;
+
+        // 处理专辑搜索时API可能附带的歌曲
+        if (neteaseRes.data.result.songs) {
+          songsFromAlbum = neteaseRes.data.result.songs.map((song: any): SongResult => {
+            const artists = (song.ar || song.artists || []).map((a: any): Artist => ({
+              id: a.id || 0, name: a.name || '未知歌手', picId: a.picId || 0, img1v1Id: a.img1v1Id || 0,
+              briefDesc: a.briefDesc || '', picUrl: a.picUrl || '', img1v1Url: a.img1v1Url || '',
+              albumSize: a.albumSize || 0, alias: a.alias || [], trans: a.trans || '',
+              musicSize: a.musicSize || 0, topicPerson: a.topicPerson || 0,
+            }));
+            return {
+              id: song.id, name: song.name,
+              picUrl: song.al?.picUrl || song.album?.picUrl || song.al?.coverUrl || song.album?.coverUrl || '',
+              duration: song.dt || song.duration || 0, artists: artists,
+              album: { // 这里album是歌曲所属的专辑，与当前搜索的专辑对象区分
+                id: song.al?.id || song.album?.id || 0, name: song.al?.name || song.album?.name || '未知专辑',
+                picUrl: song.al?.picUrl || song.album?.picUrl || song.al?.coverUrl || song.album?.coverUrl || '',
+              },
+              source: 'netease', type: 'music', privilege: song.privilege, fee: song.fee, sq: song.sq, hr: song.hr, pl: song.pl
+            };
+          });
+        }
+      }
+
+      if (isLoadMore && searchDetail.value) {
+        searchDetail.value.albums = [...searchDetail.value.albums, ...albumsToSet];
+        searchDetail.value.songs = [...searchDetail.value.songs, ...songsFromAlbum];
+      } else {
+        searchDetail.value = {
+          songs: songsFromAlbum, // 专辑附带的歌曲
+          albums: albumsToSet, playlists: [], mvs: [], kwSongs: [] // 其他类型清空
+        };
+      }
+      hasMore.value = currentNeteaseHasMore;
+
+    // --- MV 搜索逻辑分支 ---
+    } else if (searchTypeToUse === SEARCH_TYPE.MV) {
+      const neteaseRes = await getSearch({ keywords, type: SEARCH_TYPE.MV, limit: ITEMS_PER_PAGE, offset: (page.value - 1) * ITEMS_PER_PAGE });
+      let mvsToSet: MvItem[] = [];
+
+      if (neteaseRes?.data?.result?.mvs) {
+        mvsToSet = neteaseRes.data.result.mvs.map((mv: any): MvItem => {
+          const durationInSeconds = Math.round(mv.duration / 1000);
           return {
-            id: mv.id,
-            name: mv.name,
-            cover: mv.cover,
-            picUrl: mv.cover, // 确保 SearchItem 能获取到封面
-            artistName: mv.artistName,
-            artists: mv.artists,
-            playCount: mv.playCount,
-            duration: mv.duration, // 原始的 duration，单位待确认
-            type: 'mv', // 类型为MV
-            desc: `${mv.artistName || '未知艺人'} · ${secondToMinute(durationInSeconds)}`, // 使用 secondToMinute
+            id: mv.id, name: mv.name, cover: mv.cover, picUrl: mv.cover,
+            artistName: mv.artistName, artists: mv.artists, playCount: mv.playCount,
+            duration: mv.duration, type: 'mv',
+            desc: `${mv.artistName || '未知艺人'} · ${secondToMinute(durationInSeconds)}`,
             source: 'netease'
           };
         });
-        currentNeteaseHasMore = neteaseResult.mvs.length === ITEMS_PER_PAGE;
-      } else if (neteaseResult.songs && searchTypeToUse !== SEARCH_TYPE.MUSIC) {
-        neteaseSongs = neteaseResult.songs.map((song: any): SongResult => {
-          const artists = (song.ar || song.artists || []).map((a: any): Artist => ({
-            id: a.id || 0, name: a.name || '未知歌手', picId: a.picId || 0, img1v1Id: a.img1v1Id || 0,
-            briefDesc: a.briefDesc || '', picUrl: a.picUrl || '', img1v1Url: a.img1v1Url || '',
-            albumSize: a.albumSize || 0, alias: a.alias || [], trans: a.trans || '',
-            musicSize: a.musicSize || 0, topicPerson: a.topicPerson || 0,
-          }));
-          const albumData = song.al || song.album || {};
-          const fallbackArtist: Artist = { id: 0, name: '未知歌手', picUrl: '', alias: [], briefDesc: '', albumSize: 0, musicSize: 0, topicPerson: 0, img1v1Id: 0, img1v1Url: '', trans: '' , picId: 0 };
-          return {
-            id: song.id, name: song.name, ar: artists, artists: artists, 
-            al: {
-              id: albumData.id || 0, name: albumData.name || '未知专辑', picUrl: albumData.picUrl || '',
-              type: albumData.type || '', size: albumData.size || 0, picId: albumData.picId || 0,
-              blurPicUrl: albumData.blurPicUrl || '', companyId: albumData.companyId || 0,
-              pic: albumData.pic || 0, publishTime: albumData.publishTime || 0,
-              description: albumData.description || '', tags: albumData.tags || '',
-              company: albumData.company || '', briefDesc: albumData.briefDesc || '',
-              artist: artists[0] || fallbackArtist, songs: albumData.songs || [],
-              alias: albumData.alias || [], status: albumData.status || 0,
-              copyrightId: albumData.copyrightId || 0, commentThreadId: albumData.commentThreadId || '',
-              artists: artists, subType: albumData.subType || '', transName: albumData.transName || '',
-              onSale: albumData.onSale || false, mark: albumData.mark || 0,
-              picId_str: albumData.picId_str || albumData.pic_str || ''
-            },
-            album: { 
-              id: albumData.id || 0, name: albumData.name || '未知专辑', picUrl: albumData.picUrl || '',
-              type: albumData.type || '', size: albumData.size || 0, picId: albumData.picId || 0,
-              blurPicUrl: albumData.blurPicUrl || '', companyId: albumData.companyId || 0,
-              pic: albumData.pic || 0, publishTime: albumData.publishTime || 0,
-              description: albumData.description || '', tags: albumData.tags || '',
-              company: albumData.company || '', briefDesc: albumData.briefDesc || '',
-              artist: artists[0] || fallbackArtist, songs: albumData.songs || [],
-              alias: albumData.alias || [], status: albumData.status || 0,
-              copyrightId: albumData.copyrightId || 0, commentThreadId: albumData.commentThreadId || '',
-              artists: artists, subType: albumData.subType || '', transName: albumData.transName || '',
-              onSale: albumData.onSale || false, mark: albumData.mark || 0,
-              picId_str: albumData.picId_str || albumData.pic_str || ''
-            },
-            picUrl: albumData.picUrl || '', dt: song.dt || 0, duration: song.dt || 0, source: 'netease', count: 0,
-          };
-        });
-        currentNeteaseHasMore = neteaseResult.songs.length === ITEMS_PER_PAGE;
+        currentNeteaseHasMore = neteaseRes.data.result.mvs.length === ITEMS_PER_PAGE;
       }
-    } else if (neteaseRes.status === 'fulfilled' && !neteaseRes.value?.data?.result) {
-      console.warn('Netease API success but no result data received.');
-    }
 
-    if (kwRes.status === 'fulfilled' && kwRes.value && Array.isArray(kwRes.value)) {
-      kwSongsResult = kwRes.value;
-      currentKwHasMore = kwSongsResult.length === ITEMS_PER_PAGE;
-    }
-
-    if (isLoadMore) {
-      if (searchDetail.value) { // Add null check
-        if (searchTypeToUse === SEARCH_TYPE.MUSIC) {
-          searchDetail.value.songs = [...searchDetail.value.songs, ...neteaseSongs, ...kwSongsResult].sort((_a, _b) => 0);
-        } else {
-          searchDetail.value.albums = [...searchDetail.value.albums, ...neteaseAlbums];
-          searchDetail.value.playlists = [...searchDetail.value.playlists, ...neteasePlaylists];
-          searchDetail.value.mvs = [...searchDetail.value.mvs, ...neteaseMvs];
-          searchDetail.value.kwSongs = [...searchDetail.value.kwSongs, ...kwSongsResult];
-          if (neteaseSongs.length > 0) {
-              searchDetail.value.songs = [...searchDetail.value.songs, ...neteaseSongs];
-          }
-        }
-      }
-    } else {
-      // Ensure searchDetail.value is not null before assigning
-      searchDetail.value = {
-        songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] // Initialize structure
-      };
-      if (searchTypeToUse === SEARCH_TYPE.MUSIC) {
-        searchDetail.value.songs = [...neteaseSongs, ...kwSongsResult].sort((_a, _b) => 0);
-        searchDetail.value.kwSongs = []; // kwSongs are part of songs for MUSIC type
+      if (isLoadMore && searchDetail.value) {
+        searchDetail.value.mvs = [...searchDetail.value.mvs, ...mvsToSet];
       } else {
-        searchDetail.value.albums = neteaseAlbums;
-        searchDetail.value.playlists = neteasePlaylists;
-        searchDetail.value.mvs = neteaseMvs;
-        searchDetail.value.kwSongs = kwSongsResult; // kwSongs are separate for other types if fetched
-        searchDetail.value.songs = neteaseSongs; // Netease songs for other types if any
+        searchDetail.value = {
+          songs: [], albums: [], playlists: [], mvs: mvsToSet, kwSongs: [] // 其他类型清空
+        };
       }
+      hasMore.value = currentNeteaseHasMore;
     }
-
-    hasMore.value = currentNeteaseHasMore || currentKwHasMore;
+    // --- 其他未知类型，可以加一个默认处理或错误提示 ---
+    else {
+        console.warn('未知的搜索类型:', searchTypeToUse);
+        if (!isLoadMore && searchDetail.value) { // 确保 searchDetail 已初始化
+            searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
+        }
+        hasMore.value = false;
+    }
 
   } catch (e) {
     console.error('搜索失败:', e);
@@ -475,25 +454,39 @@ watch(
 watch(
   () => route.query,
   (newQuery, oldQuery) => {
-    if (newQuery.keyword && route.name === 'Search') {
-      const newKeyword = newQuery.keyword as string;
-      const newTypeFromQuery = newQuery.type ? Number(newQuery.type) : (searchStore.searchType || SEARCH_TYPE.MUSIC);
+    const isFirstRun = oldQuery === undefined;
+    const currentKeyword = newQuery.keyword as string;
+    const currentType = newQuery.type ? Number(newQuery.type) : (searchStore.searchType || SEARCH_TYPE.MUSIC);
 
-      const keywordActuallyChanged = !oldQuery || newKeyword !== (oldQuery.keyword as string);
-      const typeActuallyChanged = !oldQuery || newTypeFromQuery !== (oldQuery.type ? Number(oldQuery.type) : newTypeFromQuery);
+    if (route.name === 'Search') {
+      if (currentKeyword) {
+        // 更新store中的值
+        searchStore.searchValue = currentKeyword;
+        searchStore.searchType = currentType;
 
-      if (keywordActuallyChanged || typeActuallyChanged) {
-        searchStore.searchValue = newKeyword;
-        searchStore.searchType = newTypeFromQuery;
-        loadSearch(newKeyword, newTypeFromQuery, false);
-      } else if (!searchDetail.value || Object.values(searchDetail.value).every(arr => arr.length === 0)){
-        loadSearch(newKeyword, newTypeFromQuery, false);
+        if (isFirstRun) {
+          // 首次运行且有关键词，直接加载
+          loadSearch(currentKeyword, currentType, false);
+        } else {
+          // 非首次运行，检查关键词或类型是否真的变化了
+          const keywordActuallyChanged = currentKeyword !== (oldQuery.keyword as string);
+          const oldTypeFromQuery = oldQuery.type ? Number(oldQuery.type) : (searchStore.searchType || SEARCH_TYPE.MUSIC); // 获取旧类型的方式应与新类型一致
+          const typeActuallyChanged = currentType !== oldTypeFromQuery;
+
+          if (keywordActuallyChanged || typeActuallyChanged) {
+            loadSearch(currentKeyword, currentType, false);
+          } else if (!searchDetail.value || Object.values(searchDetail.value).every(arr => arr.length === 0)) {
+            // 兼容刷新时，query未变但数据为空的情况 (例如从store加载失败或被清除)
+            loadSearch(currentKeyword, currentType, false);
+          }
+        }
+      } else {
+        // 没有关键词 (例如从侧边栏点击搜索直接进入)
+        searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
+        hotKeyword.value = t('search.title.searchList');
+        searchStore.searchValue = ''; // 清空store中的搜索词
+        // 保留当前的搜索类型 searchStore.searchType 不变
       }
-
-    } else if (route.name === 'Search' && !newQuery.keyword) {
-      searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
-      hotKeyword.value = t('search.title.searchList');
-      searchStore.searchValue = '';
     }
   },
   { immediate: true, deep: true }
