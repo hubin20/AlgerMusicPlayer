@@ -127,13 +127,10 @@ export async function searchKwMusic(
   _searchType: number = 1 // 将 searchType 改为 _searchType
 ): Promise<SongResult[]> {
   try {
-    console.log(`[酷我API] 开始搜索: 关键词=${keywords}, 页码=${page}, 限制=${limit}`);
-
-    // 确保关键词有效
-    if (!keywords || keywords.trim() === '') {
-      console.warn('[酷我API] 搜索关键词为空');
-      return [];
-    }
+    // 当前 API (kw-api.cenguigui.cn) 的搜索功能主要针对歌曲名称/歌手名，
+    // 并没有明确的参数来区分搜索类型（如专辑、歌单、MV）。
+    // 因此，无论 searchType 是什么，我们都使用 keywords 进行通用搜索。
+    // 后续如果API更新或更换了支持类型的API，这里可以添加逻辑。
 
     const params: any = {
       name: keywords,
@@ -146,21 +143,18 @@ export async function searchKwMusic(
     const response = await axios.get<KwSearchApiResponse>(
       KW_API_BASE_URL,
       {
-        params,
-        timeout: 10000, // 设置10秒超时
+        params
       }
     );
 
     if (response.data.code === 200 && Array.isArray(response.data.data)) {
-      const songs = response.data.data.map(mapKwSongToSongResult).filter(song => song.id) as SongResult[];
-      console.log(`[酷我API] 搜索成功: 找到 ${songs.length} 首歌曲`);
-      return songs;
+      return response.data.data.map(mapKwSongToSongResult).filter(song => song.id) as SongResult[];
     } else {
-      console.warn('[酷我API] 搜索失败或返回格式不正确:', response.data);
+      console.error('搜索 kw-api 失败或返回格式不正确:', response.data);
       return [];
     }
   } catch (error) {
-    console.error('[酷我API] 请求搜索接口异常:', error);
+    console.error('请求 kw-api 搜索接口异常:', error);
     return [];
   }
 }
