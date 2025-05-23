@@ -237,9 +237,11 @@ onMounted(() => {
 const hotKeyword = ref(route.query.keyword || t('search.title.searchList'));
 
 const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) => {
-  if (!keywords) return;
-
+  console.log('[Search] loadSearch called. Keywords:', keywords, 'Type from param:', type);
   const searchTypeToUse = type !== null ? type : searchType.value;
+  console.log('[Search] searchTypeToUse:', searchTypeToUse, 'searchType.value from store:', searchType.value);
+
+  if (!keywords) return;
 
   if (!isLoadMore) {
     hotKeyword.value = keywords;
