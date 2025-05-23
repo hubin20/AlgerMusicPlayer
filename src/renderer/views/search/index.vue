@@ -155,7 +155,7 @@ import { usePlayerStore } from '@/store/modules/player';
 import { useSearchStore } from '@/store/modules/search';
 import type { IHotSearch, AlbumItem, PlaylistItem, MvItem } from '@/type/search';
 import type { SongResult, Artist } from '@/type/music';
-import { isMobile, setAnimationClass, setAnimationDelay, formatNumber } from '@/utils';
+import { isMobile, setAnimationClass, setAnimationDelay } from '@/utils';
 import { NSpin, NButton, NTag } from 'naive-ui';
 
 defineOptions({
@@ -282,6 +282,7 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
     if (neteaseRes.status === 'fulfilled' && neteaseRes.value?.data?.result) {
       const neteaseResult = neteaseRes.value.data.result;
       if (searchTypeToUse === SEARCH_TYPE.MUSIC && neteaseResult.songs) {
+        // 保留原始的 SongResult 结构给单曲搜索
         neteaseSongs = neteaseResult.songs.map((song: any): SongResult => {
           const artists = (song.ar || song.artists || []).map((a: any): Artist => ({
             id: a.id || 0, name: a.name || '未知歌手', picId: a.picId || 0, img1v1Id: a.img1v1Id || 0,
@@ -294,9 +295,9 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
           return {
             id: song.id,
             name: song.name,
-            ar: artists,
-            artists: artists,
-            al: {
+            ar: artists, // 保留 ar
+            artists: artists, // 保留 artists
+            al: { // 保留 al 结构
               id: albumData.id || 0, name: albumData.name || '未知专辑', picUrl: albumData.picUrl || '',
               type: albumData.type || '', size: albumData.size || 0, picId: albumData.picId || 0,
               blurPicUrl: albumData.blurPicUrl || '', companyId: albumData.companyId || 0,
@@ -310,7 +311,7 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
               onSale: albumData.onSale || false, mark: albumData.mark || 0,
               picId_str: albumData.picId_str || albumData.pic_str || ''
             },
-            album: { 
+            album: { // 保留 album 结构
               id: albumData.id || 0, name: albumData.name || '未知专辑', picUrl: albumData.picUrl || '',
               type: albumData.type || '', size: albumData.size || 0, picId: albumData.picId || 0,
               blurPicUrl: albumData.blurPicUrl || '', companyId: albumData.companyId || 0,
@@ -324,11 +325,11 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
               onSale: albumData.onSale || false, mark: albumData.mark || 0,
               picId_str: albumData.picId_str || albumData.pic_str || ''
             },
-            picUrl: albumData.picUrl || '',
-            dt: song.dt || 0,
-            duration: song.dt || 0,
+            picUrl: albumData.picUrl || '', // 保留 picUrl
+            dt: song.dt || 0, // 保留 dt
+            duration: song.dt || 0, // 保留 duration
             source: 'netease',
-            count: 0,
+            count: 0, // 保留 count
           };
         });
         currentNeteaseHasMore = neteaseResult.songs.length === ITEMS_PER_PAGE;
@@ -336,46 +337,42 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
         neteaseAlbums = neteaseResult.albums.map((album: any): AlbumItem => ({
           id: album.id,
           name: album.name,
-          picUrl: album.picUrl,
-          artist: album.artist,
-          artists: album.artists,
-          artistName: album.artist?.name || (album.artists && album.artists[0]?.name) || '未知艺人',
-          publishTime: album.publishTime,
+          picUrl: album.picUrl || album.blurPicUrl || 'assets/default_album_cover.png',
+          artistName: album.artist?.name || (album.artists && album.artists[0]?.name) || '未知艺术家',
+          artist: album.artist || (album.artists && album.artists[0]),
           size: album.size,
-          company: album.company,
+          publishTime: album.publishTime,
           source: 'netease',
-          type: 'album',
-          desc: `${album.artist?.name || (album.artists && album.artists[0]?.name) || '未知艺人'} - ${album.size} 首歌曲`
+          type: 'album', // 使用小写 'album'
+          desc: album.artist?.name || (album.artists && album.artists[0]?.name) || t('search.unknownAlbumDesc')
         }));
         currentNeteaseHasMore = neteaseResult.albums.length === ITEMS_PER_PAGE;
       } else if (searchTypeToUse === SEARCH_TYPE.PLAYLIST && neteaseResult.playlists) {
         neteasePlaylists = neteaseResult.playlists.map((playlist: any): PlaylistItem => ({
           id: playlist.id,
           name: playlist.name,
-          coverImgUrl: playlist.coverImgUrl || playlist.picUrl,
-          trackCount: playlist.trackCount,
+          picUrl: playlist.coverImgUrl || 'assets/default_playlist_cover.png',
           playCount: playlist.playCount,
-          creator: playlist.creator?.nickname || '未知创建者',
-          description: playlist.description,
-          bookCount: playlist.bookCount,
+          trackCount: playlist.trackCount,
+          creator: playlist.creator,
           source: 'netease',
-          type: 'playlist',
-          desc: `${playlist.trackCount} 首音乐，By ${playlist.creator?.nickname || '未知创建者'}，播放 ${formatNumber(playlist.playCount)} 次`
+          type: 'playlist', // 使用小写 'playlist'
+          desc: playlist.creator?.nickname || t('search.unknownPlaylistDesc')
         }));
         currentNeteaseHasMore = neteaseResult.playlists.length === ITEMS_PER_PAGE;
       } else if (searchTypeToUse === SEARCH_TYPE.MV && neteaseResult.mvs) {
         neteaseMvs = neteaseResult.mvs.map((mv: any): MvItem => ({
           id: mv.id,
           name: mv.name,
-          cover: mv.coverUrl || mv.imgurl || mv.cover,
+          picUrl: mv.coverUrl || mv.imgurl || mv.cover || 'assets/default_mv_cover.png',
           artistName: mv.artistName,
           artists: mv.artists,
           playCount: mv.playCount,
           duration: mv.duration,
           publishTime: mv.publishTime,
           source: 'netease',
-          type: 'mv',
-          desc: mv.artistName || (mv.artists && mv.artists[0]?.name) || '未知艺人'
+          type: 'mv', // 使用小写 'mv'
+          desc: mv.artistName || mv.name || t('search.unknownMvDesc')
         }));
         currentNeteaseHasMore = neteaseResult.mvs.length === ITEMS_PER_PAGE;
       } else if (neteaseResult.songs && searchTypeToUse !== SEARCH_TYPE.MUSIC) {
@@ -386,40 +383,26 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
             albumSize: a.albumSize || 0, alias: a.alias || [], trans: a.trans || '',
             musicSize: a.musicSize || 0, topicPerson: a.topicPerson || 0,
           }));
-          const albumData = song.al || song.album || {};
-          const fallbackArtist: Artist = { id: 0, name: '未知歌手', picUrl: '', alias: [], briefDesc: '', albumSize: 0, musicSize: 0, topicPerson: 0, img1v1Id: 0, img1v1Url: '', trans: '' , picId: 0 };
           return {
-            id: song.id, name: song.name, ar: artists, artists: artists, 
-            al: {
-              id: albumData.id || 0, name: albumData.name || '未知专辑', picUrl: albumData.picUrl || '',
-              type: albumData.type || '', size: albumData.size || 0, picId: albumData.picId || 0,
-              blurPicUrl: albumData.blurPicUrl || '', companyId: albumData.companyId || 0,
-              pic: albumData.pic || 0, publishTime: albumData.publishTime || 0,
-              description: albumData.description || '', tags: albumData.tags || '',
-              company: albumData.company || '', briefDesc: albumData.briefDesc || '',
-              artist: artists[0] || fallbackArtist, songs: albumData.songs || [],
-              alias: albumData.alias || [], status: albumData.status || 0,
-              copyrightId: albumData.copyrightId || 0, commentThreadId: albumData.commentThreadId || '',
-              artists: artists, subType: albumData.subType || '', transName: albumData.transName || '',
-              onSale: albumData.onSale || false, mark: albumData.mark || 0,
-              picId_str: albumData.picId_str || albumData.pic_str || ''
+            id: song.id,
+            name: song.name,
+            picUrl: song.al?.picUrl || song.album?.picUrl || '',
+            song: {
+              artists,
+              album: {
+                id: song.al?.id || song.album?.id || 0,
+                name: song.al?.name || song.album?.name || '',
+                picUrl: song.al?.picUrl || song.album?.picUrl || ''
+              },
+              duration: song.dt || song.duration || 0,
+              id: song.id
             },
-            album: { 
-              id: albumData.id || 0, name: albumData.name || '未知专辑', picUrl: albumData.picUrl || '',
-              type: albumData.type || '', size: albumData.size || 0, picId: albumData.picId || 0,
-              blurPicUrl: albumData.blurPicUrl || '', companyId: albumData.companyId || 0,
-              pic: albumData.pic || 0, publishTime: albumData.publishTime || 0,
-              description: albumData.description || '', tags: albumData.tags || '',
-              company: albumData.company || '', briefDesc: albumData.briefDesc || '',
-              artist: artists[0] || fallbackArtist, songs: albumData.songs || [],
-              alias: albumData.alias || [], status: albumData.status || 0,
-              copyrightId: albumData.copyrightId || 0, commentThreadId: albumData.commentThreadId || '',
-              artists: artists, subType: albumData.subType || '', transName: albumData.transName || '',
-              onSale: albumData.onSale || false, mark: albumData.mark || 0,
-              picId_str: albumData.picId_str || albumData.pic_str || ''
-            },
-            picUrl: albumData.picUrl || '', dt: song.dt || 0, duration: song.dt || 0, source: 'netease', count: 0,
-          };
+            artists,
+            album: song.al || song.album,
+            duration: song.dt || song.duration,
+            source: 'netease', // 标记来源为网易云
+            type: 'music'
+          } as SongResult;
         });
         currentNeteaseHasMore = neteaseResult.songs.length === ITEMS_PER_PAGE;
       }
@@ -433,7 +416,7 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
     }
 
     if (isLoadMore) {
-      if (searchDetail.value) {
+      if (searchDetail.value) { // Add null check
         if (searchTypeToUse === SEARCH_TYPE.MUSIC) {
           searchDetail.value.songs = [...searchDetail.value.songs, ...neteaseSongs, ...kwSongsResult].sort((_a, _b) => 0);
         } else {
@@ -447,19 +430,14 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
         }
       }
     } else {
+      // Ensure searchDetail.value is not null before assigning
       searchDetail.value = {
-        songs: [], albums: [], playlists: [], mvs: [], kwSongs: []
+        songs: neteaseSongs,
+        albums: neteaseAlbums,
+        playlists: neteasePlaylists,
+        mvs: neteaseMvs,
+        kwSongs: kwSongsResult
       };
-      if (searchTypeToUse === SEARCH_TYPE.MUSIC) {
-        searchDetail.value.songs = [...neteaseSongs, ...kwSongsResult].sort((_a, _b) => 0);
-        searchDetail.value.kwSongs = [];
-      } else {
-        searchDetail.value.albums = neteaseAlbums;
-        searchDetail.value.playlists = neteasePlaylists;
-        searchDetail.value.mvs = neteaseMvs;
-        searchDetail.value.kwSongs = kwSongsResult;
-        searchDetail.value.songs = neteaseSongs;
-      }
     }
 
     hasMore.value = currentNeteaseHasMore || currentKwHasMore;
@@ -479,9 +457,7 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
 watch(
   () => searchStore.searchValue,
   (value) => {
-    if (value && value !== currentKeyword.value) {
-      loadSearch(value, searchStore.searchType, false);
-    }
+    if (value) loadSearch(value, searchStore.searchType, false);
   }
 );
 
@@ -496,7 +472,6 @@ watch(
 
 if (route.query.keyword && route.name === 'Search') {
   const typeFromQuery = route.query.type ? Number(route.query.type) : searchStore.searchType;
-  searchStore.searchType = typeFromQuery;
   loadSearch(route.query.keyword as string, typeFromQuery, false);
 } else if (searchStore.searchValue && route.name === 'Search') {
     loadSearch(searchStore.searchValue, searchStore.searchType, false);
@@ -645,7 +620,7 @@ const handlePlayAll = () => {
 }
 
 .search-playlist-grid {
-  @apply grid gap-4 pb-28 mt-2 pr-4;
+  @apply grid gap-x-5 gap-y-5 px-4; /* 调整了gap和padding以适应搜索页 */
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 }
 </style>

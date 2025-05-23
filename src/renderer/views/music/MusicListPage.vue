@@ -240,74 +240,100 @@ onMounted(() => {
 // 从 pinia 或路由参数获取数据
 const initData = () => {
   // 优先从 pinia 获取数据
-  if (musicStore.currentMusicList) {
-    name.value = musicStore.currentMusicListName || '';
-    songList.value = musicStore.currentMusicList || [];
-    listInfo.value = musicStore.currentListInfo || null;
+  if (musicStore.currentMusicList && musicStore.currentMusicListName && musicStore.currentListInfo) {
+    name.value = musicStore.currentMusicListName;
+    songList.value = musicStore.currentMusicList;
+    listInfo.value = musicStore.currentListInfo;
     canRemove.value = musicStore.canRemoveSong || false;
-    
-    // 初始化歌曲列表
-    initSongList(songList.value);
-    return;
-  }
-  
-  // 从路由参数获取
-  const routeId = route.params.id as string;
-  const routeType = route.query.type as string;
-  
-  if (routeId) {
-    // 这里根据 type 和 id 加载数据
-    // 例如: 获取歌单、专辑等
-    loading.value = true;
-    loadDataByType(routeType, routeId).finally(() => {
-      loading.value = false;
-    });
-  }
-};
 
-// 根据类型加载数据
-const loadDataByType = async (type: string, id: string) => {
-  try {
-    const result = await getMusicListByType(type, id);
-    
-    if (type === 'album') {
-      const { songs, album } = result.data;
-      name.value = album.name;
-      songList.value = songs.map((song: any) => {
-        song.al.picUrl = song.al.picUrl || album.picUrl;
-        song.picUrl = song.al.picUrl || album.picUrl || song.picUrl;
-        return song;
-      });
-      listInfo.value = {
-        ...album,
-        creator: {
-          avatarUrl: album.artist.img1v1Url,
-          nickname: `${album.artist.name} - ${album.company}`
-        },
-        description: album.description
-      };
-    } else if (type === 'playlist') {
-      const { playlist } = result.data;
-      name.value = playlist.name;
-      listInfo.value = playlist;
-      
-      // 初始化歌曲列表
-      if (playlist.tracks) {
-        songList.value = playlist.tracks;
+    // 根据类型调整数据结构
+    if (listInfo.value && route.query.type === 'album') {
+      // 如果是专辑，创建者信息在 artist 或 artists 字段
+      if (!listInfo.value.creator && listInfo.value.artist) {
+        listInfo.value.creator = {
+          avatarUrl: listInfo.value.artist.img1v1Url || listInfo.value.artist.picUrl,
+          nickname: listInfo.value.artist.name
+        };
+      } else if (!listInfo.value.creator && listInfo.value.artists && listInfo.value.artists.length > 0) {
+        listInfo.value.creator = {
+          avatarUrl: listInfo.value.artists[0].img1v1Url || listInfo.value.artists[0].picUrl,
+          nickname: listInfo.value.artists[0].name
+        };
       }
+       // 专辑描述通常在 album.description
+       // listInfo.description 已在 SearchItem 中被赋值为 album.description
     }
-    
-    // 初始化歌曲列表
+
     initSongList(songList.value);
-  } catch (error) {
-    console.error('加载数据失败:', error);
+    // 如果是从路由直接进入，需要检查收藏状态
+    if (route.params.id) {
+      checkCollectionStatus();
+    }
+    return; // 从 Pinia 获取数据成功，则返回
+  }
+
+  // 如果 Pinia 中没有，则尝试从路由参数加载
+  const id = route.params.id as string;
+  const type = route.query.type as string;
+  const listNameFromQuery = route.query.name as string;
+
+  if (id && type) {
+    loading.value = true;
+    canRemove.value = type === 'playlist' && musicStore.isUserPlaylist(Number(id)); // 只有用户的歌单可编辑
+    getMusicListByType(id, type)
+      .then((result: any) => {
+        if (type === 'album') {
+          const { album, songs } = result.data;
+          name.value = album.name;
+          // 专辑的歌曲列表在 songs 中，封面在 album.picUrl
+          // 专辑的艺术家信息在 album.artist 或 album.artists
+          // 专辑的描述在 album.description
+          songList.value = songs.map((song: any) => {
+            song.al = song.al || {}; // 确保 al 对象存在
+            song.al.picUrl = song.al.picUrl || album.picUrl; // 使用专辑封面作为歌曲的专辑封面
+            song.picUrl = song.al.picUrl || album.picUrl || song.picUrl;
+            return song;
+          });
+          listInfo.value = {
+            ...album,
+            coverImgUrl: album.picUrl, // 统一封面字段
+            creator: album.artist ? { // 统一创建者/艺术家信息
+              avatarUrl: album.artist.img1v1Url || album.artist.picUrl,
+              nickname: album.artist.name
+            } : (album.artists && album.artists.length > 0 ? {
+              avatarUrl: album.artists[0].img1v1Url || album.artists[0].picUrl,
+              nickname: album.artists[0].name
+            } : { nickname: '未知艺术家', avatarUrl: '' }),
+            description: album.description || ''
+          };
+        } else if (type === 'playlist') {
+          const { playlist } = result.data;
+          name.value = playlist.name;
+          songList.value = playlist.tracks || [];
+          listInfo.value = playlist; // playlist 对象结构已包含 creator, coverImgUrl, description
+        }
+        initSongList(songList.value);
+        checkCollectionStatus(); // 加载完数据后检查收藏状态
+      })
+      .catch((error) => {
+        console.error('加载数据失败:', error);
+        message.error(t('user.message.getDataFail'));
+      })
+      .finally(() => {
+        loading.value = false;
+      });
+  } else if (listNameFromQuery) {
+    name.value = listNameFromQuery;
   }
 };
 
 const getCoverImgUrl = computed(() => {
-  const coverImgUrl = listInfo.value?.coverImgUrl;
-  if (coverImgUrl) {
-    return coverImgUrl;
+  if (listInfo.value?.coverImgUrl) {
+    return listInfo.value.coverImgUrl;
+  }
+  // 兼容旧的专辑数据可能没有 coverImgUrl 但有 picUrl
+  if (listInfo.value?.picUrl && route.query.type === 'album') {
+    return listInfo.value.picUrl;
   }
 
   const song = songList.value[0];
@@ -736,48 +762,56 @@ const toggleLayout = () => {
 };
 
 // 初始化歌单收藏状态
-const checkCollectionStatus = () => {
-  // 只有歌单类型才能收藏
+const checkCollectionStatus = async () => {
   if (route.query.type === 'playlist' && listInfo.value?.id) {
     canCollect.value = true;
-    // 检查是否已收藏
-    isCollected.value = listInfo.value.subscribed || false;
+    isCollected.value = musicStore.isCollectedPlaylist(listInfo.value.id);
+  } else if (route.query.type === 'album' && listInfo.value?.id) {
+    canCollect.value = true; // 专辑也可以收藏
+    // 此处需要实现检查专辑是否已收藏的逻辑，例如 musicStore.isCollectedAlbum(listInfo.value.id)
+    // 暂时设置为 false，后续需要您根据实际收藏逻辑添加
+    isCollected.value = musicStore.isCollectedAlbum(listInfo.value.id); 
   } else {
     canCollect.value = false;
+    isCollected.value = false;
   }
 };
 
 // 切换收藏状态
 const toggleCollect = async () => {
-  if (!listInfo.value?.id) return;
-  
+  if (!canCollect.value || !listInfo.value?.id) return;
+
+  const currentStatus = isCollected.value;
+  const type = route.query.type as string;
+  const id = listInfo.value.id;
+
   try {
-    loadingList.value = true;
-    const tVal = isCollected.value ? 2 : 1; // 1:收藏, 2:取消收藏
-    const response = await subscribePlaylist({
-      t: tVal,
-      id: listInfo.value.id
-    });
-    
-    // 假设API返回格式是 { data: { code: number, msg?: string } }
-    const res = response.data;
-    
-    if (res.code === 200) {
-      isCollected.value = !isCollected.value;
-      const msgKey = isCollected.value 
-        ? 'comp.musicList.collectSuccess'
-        : 'comp.musicList.cancelCollectSuccess';
-      message.success(t(msgKey));
-      // 更新歌单信息
-      listInfo.value.subscribed = isCollected.value;
+    let success = false;
+    if (type === 'playlist') {
+      await subscribePlaylist({
+        id: id,
+        t: currentStatus ? 2 : 1 // 1: 收藏, 2: 取消收藏
+      });
+      musicStore.updatePlaylistCollection(id, !currentStatus);
+      success = true;
+    } else if (type === 'album') {
+      // 调用收藏/取消收藏专辑的 API
+      // 例如: await subscribeAlbum({ id: id, t: currentStatus ? 0 : 1 }); // API可能不同
+      // 更新 store 中的专辑收藏状态: musicStore.updateAlbumCollection(id, !currentStatus);
+      // 此处为示例，您需要替换为实际的API调用和store更新逻辑
+      const res = await musicStore.toggleAlbumCollection(id, !currentStatus);
+      if (res) success = true;
+    }
+
+    if (success) {
+      isCollected.value = !currentStatus;
+      message.success(currentStatus ? t('user.message.cancelCollectSuccess') : t('user.message.collectSuccess'));
     } else {
-      throw new Error(res.msg || t('comp.musicList.operationFailed'));
+      message.error(currentStatus ? t('user.message.cancelCollectFail') : t('user.message.collectFail'));
     }
   } catch (error) {
-    console.error('收藏歌单失败:', error);
-    message.error(t('comp.musicList.operationFailed'));
-  } finally {
-    loadingList.value = false;
+    console.error('操作收藏失败:', error);
+    message.error(t('user.message.actionFail'));
   }
 };
 

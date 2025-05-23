@@ -28,7 +28,7 @@
       <p v-if="!(shape === 'square' && item.type === 'playlist')" class="search-item-artist">{{ item.desc }}</p>
     </div>
 
-    <div v-if="item.type === '专辑'" class="search-item-size">
+    <div v-if="item.type === 'album'" class="search-item-size">
       <i class="ri-music-2-line"></i>
       <span>{{ item.size }}</span>
     </div>
@@ -86,7 +86,7 @@ const getCurrentMv = () => {
 
 const handleClick = async () => {
   listInfo.value = null;
-  if (props.item.type === '专辑') {
+  if (props.item.type === 'album') {
     const res = await getAlbum(props.item.id);
     songList.value = res.data.songs.map((song: any) => {
       song.al.picUrl = song.al.picUrl || props.item.picUrl;
