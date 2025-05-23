@@ -454,39 +454,55 @@ watch(
 watch(
   () => route.query,
   (newQuery, oldQuery) => {
+    console.log('[Watch route.query] Triggered'); // 日志1：确认侦听器被触发
+    console.log('[Watch route.query] route.name:', route.name); // 日志2：当前路由名称
+    console.log('[Watch route.query] newQuery:', JSON.parse(JSON.stringify(newQuery))); // 日志3：新的路由参数
+    console.log('[Watch route.query] oldQuery:', oldQuery ? JSON.parse(JSON.stringify(oldQuery)) : undefined); // 日志4：旧的路由参数
+
     const isFirstRun = oldQuery === undefined;
+    console.log('[Watch route.query] isFirstRun:', isFirstRun); // 日志5：是否首次运行
+
     const currentKeyword = newQuery.keyword as string;
-    const currentType = newQuery.type ? Number(newQuery.type) : (searchStore.searchType || SEARCH_TYPE.MUSIC);
+    console.log('[Watch route.query] currentKeyword:', currentKeyword); // 日志6：解析出的关键词
+
+    const currentTypeFromStore = searchStore.searchType;
+    const currentTypeFromQuery = newQuery.type ? Number(newQuery.type) : null;
+    const currentType = currentTypeFromQuery !== null ? currentTypeFromQuery : (currentTypeFromStore || SEARCH_TYPE.MUSIC);
+    console.log('[Watch route.query] currentType (fromQuery, fromStore, final):', currentTypeFromQuery, currentTypeFromStore, currentType); // 日志7：解析出的类型
 
     if (route.name === 'Search') {
+      console.log('[Watch route.query] Inside route.name === \'Search\' block'); // 日志8
       if (currentKeyword) {
-        // 更新store中的值
+        console.log('[Watch route.query] Inside currentKeyword block, about to update store and potentially call loadSearch'); // 日志9
         searchStore.searchValue = currentKeyword;
         searchStore.searchType = currentType;
 
         if (isFirstRun) {
-          // 首次运行且有关键词，直接加载
+          console.log('[Watch route.query] isFirstRun is true, calling loadSearch...'); // 日志10
           loadSearch(currentKeyword, currentType, false);
         } else {
-          // 非首次运行，检查关键词或类型是否真的变化了
+          console.log('[Watch route.query] isFirstRun is false, checking if keyword/type changed...'); // 日志11
           const keywordActuallyChanged = currentKeyword !== (oldQuery.keyword as string);
-          const oldTypeFromQuery = oldQuery.type ? Number(oldQuery.type) : (searchStore.searchType || SEARCH_TYPE.MUSIC); // 获取旧类型的方式应与新类型一致
+          const oldTypeFromQuery = oldQuery?.type ? Number(oldQuery.type) : (searchStore.searchType || SEARCH_TYPE.MUSIC);
           const typeActuallyChanged = currentType !== oldTypeFromQuery;
+          console.log('[Watch route.query] keywordActuallyChanged:', keywordActuallyChanged, 'typeActuallyChanged:', typeActuallyChanged); // 日志12
 
           if (keywordActuallyChanged || typeActuallyChanged) {
+            console.log('[Watch route.query] Keyword or type changed, calling loadSearch...'); // 日志13
             loadSearch(currentKeyword, currentType, false);
           } else if (!searchDetail.value || Object.values(searchDetail.value).every(arr => arr.length === 0)) {
-            // 兼容刷新时，query未变但数据为空的情况 (例如从store加载失败或被清除)
+            console.log('[Watch route.query] Data is empty, calling loadSearch (refresh/store issue fallback)...'); // 日志14
             loadSearch(currentKeyword, currentType, false);
           }
         }
       } else {
-        // 没有关键词 (例如从侧边栏点击搜索直接进入)
+        console.log('[Watch route.query] No currentKeyword, resetting searchDetail.'); // 日志15
         searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
         hotKeyword.value = t('search.title.searchList');
-        searchStore.searchValue = ''; // 清空store中的搜索词
-        // 保留当前的搜索类型 searchStore.searchType 不变
+        searchStore.searchValue = '';
       }
+    } else {
+      console.log('[Watch route.query] Not on Search route, or other condition not met.'); // 日志16
     }
   },
   { immediate: true, deep: true }
