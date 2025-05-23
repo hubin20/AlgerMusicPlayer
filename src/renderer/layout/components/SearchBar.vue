@@ -204,6 +204,7 @@ watch(
 );
 
 const search = () => {
+  console.log('[SearchBar] search called. searchValue.value:', searchValue.value);
   const { value } = searchValue;
   if (value === '') {
     searchValue.value = hotSearchValue.value;
