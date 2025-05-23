@@ -22,16 +22,45 @@ export const getSearch = async (params: IParams) => {
       return { data: { result: null, code: 400 } };
     }
 
-    const response = await request.get<any>('/cloudsearch', { params });
+    // 添加重试机制
+    let retries = 0;
+    const maxRetries = 3;
+    let response;
 
-    // 检查响应数据是否有效
-    if (!response.data || !response.data.result) {
-      console.warn('[搜索API] 响应数据无效:', response.data);
-      return { data: { result: null, code: response.data?.code || 500 } };
+    while (retries < maxRetries) {
+      try {
+        response = await request.get<any>('/cloudsearch', {
+          params,
+          // 确保每次请求都有唯一的时间戳，避免缓存问题
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+
+        // 检查响应数据是否有效
+        if (response.data && response.data.result) {
+          console.log(`[搜索API] 请求成功: 类型=${params.type}, 结果数量=${getResultCount(response.data.result, params.type)}`);
+          return response;
+        } else {
+          console.warn(`[搜索API] 尝试 ${retries + 1}/${maxRetries}: 响应数据无效:`, response.data);
+          retries++;
+          if (retries < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒再重试
+          }
+        }
+      } catch (err) {
+        console.error(`[搜索API] 尝试 ${retries + 1}/${maxRetries} 失败:`, err);
+        retries++;
+        if (retries < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒再重试
+        }
+      }
     }
 
-    console.log(`[搜索API] 请求成功: 类型=${params.type}, 结果数量=${getResultCount(response.data.result, params.type)}`);
-    return response;
+    // 如果所有重试都失败
+    console.error(`[搜索API] 经过 ${maxRetries} 次尝试后仍然失败`);
+    return { data: { result: null, code: 500 } };
   } catch (error) {
     console.error('[搜索API] 请求失败:', error);
     // 返回一个有效的响应结构，避免调用方出错

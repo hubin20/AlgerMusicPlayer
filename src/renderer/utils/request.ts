@@ -17,14 +17,14 @@ const baseURL = window.electron
 
 const request = axios.create({
   baseURL,
-  timeout: 15000,
+  timeout: 30000,
   withCredentials: true
 });
 
 // 最大重试次数
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 5;
 // 重试延迟（毫秒）
-const RETRY_DELAY = 500;
+const RETRY_DELAY = 1000;
 
 // 请求拦截器
 request.interceptors.request.use(

@@ -229,6 +229,18 @@ const loadHotSearch = async () => {
   hotSearchData.value = data;
 };
 
+// 添加防抖函数
+let searchDebounceTimer: number | null = null;
+const debounceSearch = (fn: Function, delay: number = 300) => {
+  if (searchDebounceTimer !== null) {
+    clearTimeout(searchDebounceTimer);
+  }
+  searchDebounceTimer = setTimeout(() => {
+    fn();
+    searchDebounceTimer = null;
+  }, delay) as unknown as number;
+};
+
 onMounted(() => {
   console.log('[Search] 组件挂载: 开始加载热搜和搜索历史');
   loadHotSearch();
@@ -238,16 +250,16 @@ onMounted(() => {
   if (route.query.keyword && route.name === 'Search') {
     const typeFromQuery = route.query.type ? Number(route.query.type) : searchStore.searchType;
     console.log(`[Search] 从路由参数加载搜索: 关键词=${route.query.keyword}, 类型=${typeFromQuery}`);
-    // 使用 nextTick 确保组件完全挂载后再执行搜索
-    nextTick(() => {
+    // 使用防抖函数和延迟执行，确保组件完全挂载
+    debounceSearch(() => {
       loadSearch(route.query.keyword as string, typeFromQuery, false);
-    });
+    }, 500);
   } else if (searchStore.searchValue && route.name === 'Search') {
     console.log(`[Search] 从store加载搜索: 关键词=${searchStore.searchValue}, 类型=${searchStore.searchType}`);
-    // 使用 nextTick 确保组件完全挂载后再执行搜索
-    nextTick(() => {
+    // 使用防抖函数和延迟执行，确保组件完全挂载
+    debounceSearch(() => {
       loadSearch(searchStore.searchValue, searchStore.searchType, false);
-    });
+    }, 500);
   }
 });
 
@@ -288,6 +300,18 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
     page.value++;
     console.log(`[Search] 页码: ${page.value}, 每页数量: ${ITEMS_PER_PAGE}`);
 
+    // 添加预检查，确保网络连接正常
+    try {
+      const preCheck = await fetch('https://api.931125.xyz/ping', { 
+        method: 'HEAD',
+        mode: 'no-cors',
+        cache: 'no-cache'
+      });
+      console.log('[Search] API 预检查完成');
+    } catch (e) {
+      console.warn('[Search] API 预检查失败，但仍继续尝试搜索:', e);
+    }
+
     const neteasePromise = getSearch({
       keywords,
       type: searchTypeToUse,
@@ -301,7 +325,18 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
       : Promise.resolve([]); // 其他类型则返回空数组
 
     console.log(`[Search] 发送请求: 网易云和酷我API`);
-    const [neteaseRes, kwRes] = await Promise.allSettled([neteasePromise, kwSongsPromise]);
+    
+    // 设置超时处理
+    const timeout = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('搜索请求超时')), 15000)
+    );
+    
+    // 使用 Promise.race 确保请求不会无限等待
+    const [neteaseRes, kwRes] = await Promise.allSettled([
+      Promise.race([neteasePromise, timeout]),
+      Promise.race([kwSongsPromise, timeout])
+    ]);
+    
     console.log(`[Search] 请求完成: 网易云状态=${neteaseRes.status}, 酷我状态=${kwRes.status}`);
 
     let neteaseSongs: SongResult[] = [];
@@ -617,10 +652,10 @@ watch(
   (value) => {
     console.log(`[Search] 搜索值变化: ${value}`);
     if (value) {
-      // 使用 nextTick 确保在下一个 DOM 更新周期执行搜索
-      nextTick(() => {
+      // 使用防抖函数执行搜索
+      debounceSearch(() => {
         loadSearch(value, searchStore.searchType, false);
-      });
+      }, 300);
     }
   }
 );
@@ -630,10 +665,10 @@ watch(
   (newType) => {
     console.log(`[Search] 搜索类型变化: ${newType}`);
     if (searchStore.searchValue) {
-      // 使用 nextTick 确保在下一个 DOM 更新周期执行搜索
-      nextTick(() => {
+      // 使用防抖函数执行搜索
+      debounceSearch(() => {
         loadSearch(searchStore.searchValue, newType, false);
-      });
+      }, 300);
     }
   }
 );
