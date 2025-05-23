@@ -57,12 +57,14 @@
             </div>
           </template>
           <template v-else-if="searchType === SEARCH_TYPE.PLAYLIST && searchDetail.playlists?.length">
-            <div
-              v-for="(playlistItem, index) in searchDetail.playlists"
-              :key="playlistItem.id || index" class="mb-3"
-              :class="setAnimationClass('animate__bounceInRight')" :style="getSearchListAnimation(index)"
-            >
-              <search-item :item="playlistItem" shape="square" />
+            <div class="search-playlist-grid">
+              <div
+                v-for="(playlistItem, index) in searchDetail.playlists"
+                :key="playlistItem.id || index"
+                :class="setAnimationClass('animate__bounceInRight')" :style="getSearchListAnimation(index)"
+              >
+                <search-item :item="playlistItem" shape="square" />
+              </div>
             </div>
           </template>
           <template v-else-if="searchType === SEARCH_TYPE.MV && searchDetail.mvs?.length">
@@ -628,5 +630,14 @@ const handlePlayAll = () => {
 .no-more {
   @apply text-center py-4;
   @apply text-gray-500 dark:text-gray-400;
+}
+
+.search-list-box {
+  @apply pt-4;
+}
+
+.search-playlist-grid {
+  @apply grid gap-x-5 gap-y-5 px-4; /* 调整了gap和padding以适应搜索页 */
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 }
 </style>
