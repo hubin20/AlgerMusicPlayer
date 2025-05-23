@@ -196,21 +196,30 @@ const searchValue = ref('');
 watch(
   () => searchStore.searchValue,
   (newValue) => {
-    if (newValue) {
-      searchValue.value = newValue;
-    }
+    // 确保本地 searchValue 与 store 中的值同步
+    searchValue.value = newValue;
   },
   { immediate: true }
 );
 
 const search = () => {
-  const { value } = searchValue;
-  if (value === '') {
-    searchValue.value = hotSearchValue.value;
-    return;
+  let termToSearch = searchValue.value; // 当前输入框的值
+
+  if (termToSearch.trim() === '') { // 如果去除首尾空格后为空
+    if (hotSearchValue.value) { // 如果有热搜词
+      termToSearch = hotSearchValue.value;
+      searchValue.value = termToSearch; // 更新输入框显示为热搜词
+      // searchStore.setSearchValue(termToSearch); // 更新 Store 中的值
+    } else {
+      // 输入框为空，且无热搜词，执行空搜索
+      searchStore.setSearchValue('');
+      searchStore.triggerSearch(); // 触发搜索，search/index.vue 会处理空关键词的情况
+      return;
+    }
   }
 
-  searchStore.setSearchValue(value);
+  // 确保将最终要搜索的词（可能是用户输入的或热搜词）更新到 store
+  searchStore.setSearchValue(termToSearch);
 
   if (router.currentRoute.value.path === '/search') {
     searchStore.triggerSearch();
@@ -218,7 +227,7 @@ const search = () => {
     router.push({
       path: '/search',
       query: {
-        keyword: value,
+        keyword: termToSearch,
         type: searchStore.searchType
       }
     });
@@ -227,19 +236,22 @@ const search = () => {
 
 const selectSearchType = (key: number) => {
   searchStore.setSearchType(key);
-  if (searchValue.value) {
+  // 使用 store中的 searchValue 判断，因为它是最新的真实状态
+  if (searchStore.searchValue) {
     if (router.currentRoute.value.path === '/search') {
       searchStore.triggerSearch();
     } else {
       router.push({
         path: '/search',
         query: {
-          keyword: searchValue.value,
+          // 使用 store 中的 searchValue 进行跳转
+          keyword: searchStore.searchValue,
           type: key
         }
       });
     }
   }
+  // 如果 searchStore.searchValue 为空，则改变类型时不自动触发搜索或跳转
 };
 
 const searchTypeOptions = ref(SEARCH_TYPES);

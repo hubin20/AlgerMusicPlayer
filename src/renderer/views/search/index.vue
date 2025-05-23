@@ -237,19 +237,47 @@ onMounted(() => {
 const hotKeyword = ref(route.query.keyword || t('search.title.searchList'));
 
 const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) => {
-  if (!keywords) return;
+  const currentSearchValue = typeof keywords === 'string' ? keywords.trim() : '';
 
-  const searchTypeToUse = type !== null ? type : searchType.value;
+  // 如果关键词为空 (非加载更多时)，则清空结果，显示热搜/历史
+  if (!currentSearchValue && !isLoadMore) {
+    console.log('[SearchIndex] loadSearch called with empty keywords. Clearing results.');
+    searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
+    hotKeyword.value = t('search.title.searchList');
+    // 可以选择重新加载热搜和历史，以防它们之前被清空
+    // loadHotSearch();
+    // loadSearchHistory();
+    return;
+  }
+  // 如果是加载更多，但 currentKeyword 为空（理论上不应发生），也阻止
+  if (isLoadMore && !currentKeyword.value) {
+    console.warn('[SearchIndex] loadSearch attempting to load more, but currentKeyword is empty.');
+    isLoadingMore.value = false;
+    hasMore.value = false;
+    return;
+  }
+
+  const searchTypeToUse = type !== null ? type : searchStore.searchType;
+  const termToActuallySearch = isLoadMore ? currentKeyword.value : currentSearchValue;
+
+  if (!termToActuallySearch) { // 再次检查，确保实际搜索词不为空
+      console.log('[SearchIndex] loadSearch: termToActuallySearch is empty, aborting.');
+      searchDetailLoading.value = false;
+      isLoadingMore.value = false;
+      return;
+  }
+
+  console.log(`[SearchIndex] loadSearch: keyword='${termToActuallySearch}', type=${searchTypeToUse}, isLoadMore=${isLoadMore}, page=${page.value + 1}`);
 
   if (!isLoadMore) {
-    hotKeyword.value = keywords;
+    hotKeyword.value = termToActuallySearch;
     searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
     page.value = 0;
     hasMore.value = true;
-    currentKeyword.value = keywords;
-    saveSearchHistory(keywords, searchTypeToUse);
+    currentKeyword.value = termToActuallySearch; // 确保 currentKeyword 被更新
+    saveSearchHistory(termToActuallySearch, searchTypeToUse);
     searchStore.searchType = searchTypeToUse;
-    searchStore.searchValue = keywords;
+    searchStore.searchValue = termToActuallySearch;
   } else if (isLoadingMore.value || !hasMore.value) {
     return;
   }
@@ -261,7 +289,7 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
     page.value++;
 
     const neteasePromise = getSearch({
-      keywords,
+      keywords: termToActuallySearch,
       type: searchTypeToUse,
       limit: ITEMS_PER_PAGE,
       offset: (page.value - 1) * ITEMS_PER_PAGE
@@ -269,7 +297,7 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
 
     // 仅当搜索类型为单曲时，才同时请求酷我歌曲
     const kwSongsPromise = searchTypeToUse === SEARCH_TYPE.MUSIC 
-      ? searchKwMusic(keywords, page.value, ITEMS_PER_PAGE, searchTypeToUse)
+      ? searchKwMusic(termToActuallySearch, page.value, ITEMS_PER_PAGE, searchTypeToUse)
       : Promise.resolve([]); // 其他类型则返回空数组
 
     const [neteaseRes, kwRes] = await Promise.allSettled([neteasePromise, kwSongsPromise]);
@@ -568,15 +596,13 @@ watch(
 watch(
   () => searchStore.searchTrigger,
   (newTrigger, oldTrigger) => {
-    if (newTrigger > oldTrigger && searchStore.searchValue) {
-      console.log('[SearchIndex] Watch searchTrigger triggered. New:', newTrigger, 'Old:', oldTrigger, 'Keyword:', searchStore.searchValue, 'Type:', searchStore.searchType);
-      loadSearch(searchStore.searchValue, searchStore.searchType, false);
-    } else if (newTrigger > oldTrigger && !searchStore.searchValue) {
-      console.log('[SearchIndex] searchTrigger triggered but searchValue is empty.');
-      searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
-      hotKeyword.value = t('search.title.searchList');
-      loadHotSearch();
-      loadSearchHistory();
+    // 只在 trigger 确实增加时响应
+    if (newTrigger > oldTrigger) {
+      const keywordFromStore = searchStore.searchValue;
+      const typeFromStore = searchStore.searchType;
+      console.log(`[SearchIndex] Watch searchTrigger: new=${newTrigger}, old=${oldTrigger}, storeKeyword='${keywordFromStore}', storeType=${typeFromStore}`);
+      // 总是执行全新搜索 (isLoadMore = false)
+      loadSearch(keywordFromStore, typeFromStore, false);
     }
   }
 );
