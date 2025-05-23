@@ -48,12 +48,14 @@
         <template v-if="searchDetail && (searchDetail.songs?.length || searchDetail.albums?.length || searchDetail.playlists?.length || searchDetail.mvs?.length || searchDetail.kwSongs?.length)">
           <!-- 优先显示网易云精确匹配类型的结果 -->
           <template v-if="searchType === SEARCH_TYPE.ALBUM && searchDetail.albums?.length">
-            <div
-              v-for="(albumItem, index) in searchDetail.albums"
-              :key="albumItem.id || index" class="mb-3"
-              :class="setAnimationClass('animate__bounceInRight')" :style="getSearchListAnimation(index)"
-            >
-              <search-item :item="albumItem as any" shape="square" /> 
+            <div class="search-playlist-grid">
+              <div
+                v-for="(albumItem, index) in searchDetail.albums"
+                :key="albumItem.id || index" 
+                :class="setAnimationClass('animate__bounceInRight')" :style="getSearchListAnimation(index)"
+              >
+                <search-item :item="albumItem as any" shape="square" /> 
+              </div>
             </div>
           </template>
           <template v-else-if="searchType === SEARCH_TYPE.PLAYLIST && searchDetail.playlists?.length">
@@ -68,12 +70,14 @@
             </div>
           </template>
           <template v-else-if="searchType === SEARCH_TYPE.MV && searchDetail.mvs?.length">
-            <div
-              v-for="(mvItem, index) in searchDetail.mvs"
-              :key="mvItem.id || index" class="mb-3"
-              :class="setAnimationClass('animate__bounceInRight')" :style="getSearchListAnimation(index)"
-            >
-              <search-item :item="mvItem as any" shape="square" />
+            <div class="search-playlist-grid">
+              <div
+                v-for="(mvItem, index) in searchDetail.mvs"
+                :key="mvItem.id || index" 
+                :class="setAnimationClass('animate__bounceInRight')" :style="getSearchListAnimation(index)"
+              >
+                <search-item :item="mvItem as any" shape="square" />
+              </div>
             </div>
           </template>
           <!-- 默认或单曲搜索时，显示歌曲列表 (可能包含网易云单曲和酷我歌曲) -->
@@ -448,26 +452,48 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
 
 watch(
   () => searchStore.searchValue,
-  (value) => {
-    if (value) loadSearch(value, searchStore.searchType, false);
+  (value, oldValue) => {
+    if (value && value !== oldValue) {
+      loadSearch(value, searchStore.searchType, false);
+    }
   }
 );
 
 watch(
   () => searchType.value,
-  (newType) => {
-    if (searchStore.searchValue) {
+  (newType, oldType) => {
+    if (newType !== oldType && searchStore.searchValue) {
       loadSearch(searchStore.searchValue, newType, false);
     }
   }
 );
 
-if (route.query.keyword && route.name === 'Search') {
-  const typeFromQuery = route.query.type ? Number(route.query.type) : searchStore.searchType;
-  loadSearch(route.query.keyword as string, typeFromQuery, false);
-} else if (searchStore.searchValue && route.name === 'Search') {
-    loadSearch(searchStore.searchValue, searchStore.searchType, false);
-}
+watch(
+  () => route.query,
+  (newQuery, oldQuery) => {
+    if (newQuery.keyword && route.name === 'Search') {
+      const newKeyword = newQuery.keyword as string;
+      const newTypeFromQuery = newQuery.type ? Number(newQuery.type) : (searchStore.searchType || SEARCH_TYPE.MUSIC);
+
+      const keywordActuallyChanged = !oldQuery || newKeyword !== (oldQuery.keyword as string);
+      const typeActuallyChanged = !oldQuery || newTypeFromQuery !== (oldQuery.type ? Number(oldQuery.type) : newTypeFromQuery);
+
+      if (keywordActuallyChanged || typeActuallyChanged) {
+        searchStore.searchValue = newKeyword;
+        searchStore.searchType = newTypeFromQuery;
+        loadSearch(newKeyword, newTypeFromQuery, false);
+      } else if (!searchDetail.value || Object.values(searchDetail.value).every(arr => arr.length === 0)){
+        loadSearch(newKeyword, newTypeFromQuery, false);
+      }
+
+    } else if (route.name === 'Search' && !newQuery.keyword) {
+      searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
+      hotKeyword.value = t('search.title.searchList');
+      searchStore.searchValue = '';
+    }
+  },
+  { immediate: true, deep: true }
+);
 
 const handleScroll = (e: any) => {
   const { scrollTop, scrollHeight, clientHeight } = e.target;
@@ -475,21 +501,6 @@ const handleScroll = (e: any) => {
     loadSearch(currentKeyword.value, searchType.value, true);
   }
 };
-
-watch(
-  () => route.query,
-  (newQuery) => {
-    if (newQuery.keyword && route.name === 'Search') {
-      const typeFromQuery = newQuery.type ? Number(newQuery.type) : searchStore.searchType;
-      searchStore.searchType = typeFromQuery;
-      searchStore.searchValue = newQuery.keyword as string;
-    } else if (route.name === 'Search' && !newQuery.keyword) {
-      searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
-      hotKeyword.value = t('search.title.searchList');
-    }
-  },
-  { immediate: true, deep: true }
-);
 
 const handlePlay = (item: SongResult) => {
   playerStore.addToNextPlay(item);
