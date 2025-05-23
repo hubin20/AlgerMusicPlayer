@@ -74,7 +74,7 @@ import { computed, h, onMounted, onUnmounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import { useSettingsStore } from '@/store/modules/settings';
-import { checkUpdate, getProxyNodes, UpdateResult } from '@/utils/update';
+import { getProxyNodes, UpdateResult } from '@/utils/update';
 
 import config from '../../../../package.json';
 
@@ -115,18 +115,6 @@ const parsedReleaseNotes = computed(() => {
 
 const closeModal = () => {
   showModal.value = false;
-};
-
-const checkForUpdates = async () => {
-  try {
-    const result = await checkUpdate(config.version);
-    if (result) {
-      updateInfo.value = result;
-      showModal.value = true;
-    }
-  } catch (error) {
-    console.error('检查更新失败:', error);
-  }
 };
 
 const downloading = ref(false);
@@ -213,7 +201,6 @@ const handleDownloadComplete = (_event: any, success: boolean, filePath: string)
 
 // 监听下载事件
 onMounted(() => {
-  // checkForUpdates(); // 注释掉这行以禁用自动更新检查
   // 确保事件监听器只注册一次
   window.electron.ipcRenderer.removeListener('download-progress', handleDownloadProgress);
   window.electron.ipcRenderer.removeListener('download-complete', handleDownloadComplete);

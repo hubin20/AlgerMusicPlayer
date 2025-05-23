@@ -493,6 +493,20 @@ const handlePrev = () => {
   if (!isMobile.value) resetCursorTimer();
 };
 
+const handleFullscreenChange = () => {
+  isFullscreen.value = !!document.fullscreenElement;
+};
+
+const handleKeyDown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && isFullscreen.value) {
+    toggleFullscreen();
+  }
+  if (event.key === ' ' && props.show) {
+    event.preventDefault();
+    togglePlay();
+  }
+};
+
 const initVideo = async () => {
   if (props.currentMv && props.currentMv.id) {
     if (playLoading.value) return;
@@ -555,9 +569,10 @@ watch(
 
 watch(
   () => props.show,
-  (newShow, oldShow) => {
+  (newShow) => {
     if (newShow) {
       document.addEventListener('fullscreenchange', handleFullscreenChange);
+      document.addEventListener('keydown', handleKeyDown);
       if (props.currentMv?.id && !mvUrl.value) {
         initVideo();
       } else if (mvUrl.value && videoRef.value) {
@@ -588,6 +603,7 @@ watch(
       autoPlayBlocked.value = false;
 
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('keydown', handleKeyDown);
       if (controlsTimer) clearTimeout(controlsTimer);
       if (cursorTimer) clearTimeout(cursorTimer);
       if (modeHintTimer) clearTimeout(modeHintTimer);
@@ -647,7 +663,7 @@ const loadMvDetail = async (id: number) => {
   activeLoadingMessage = message.loading(t('mv.loading'), { duration: 0 });
   playLoading.value = true;
   try {
-    const res = await getMvUrl({ id });
+    const res = await getMvUrl(id);
     if (res.data.code === 200 && res.data.data.url) {
       mvUrl.value = res.data.data.url.replace(/^http:/, 'https:');
       await nextTick();
