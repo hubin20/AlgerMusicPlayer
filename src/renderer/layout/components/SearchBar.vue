@@ -210,25 +210,26 @@ const search = () => {
     return;
   }
 
-  if (router.currentRoute.value.path === '/search') {
-    searchStore.searchValue = value;
-    return;
-  }
+  searchStore.setSearchValue(value);
 
-  router.push({
-    path: '/search',
-    query: {
-      keyword: value,
-      type: searchStore.searchType
-    }
-  });
+  if (router.currentRoute.value.path === '/search') {
+    searchStore.triggerSearch();
+  } else {
+    router.push({
+      path: '/search',
+      query: {
+        keyword: value,
+        type: searchStore.searchType
+      }
+    });
+  }
 };
 
 const selectSearchType = (key: number) => {
-  searchStore.searchType = key;
+  searchStore.setSearchType(key);
   if (searchValue.value) {
     if (router.currentRoute.value.path === '/search') {
-      search();
+      searchStore.triggerSearch();
     } else {
       router.push({
         path: '/search',

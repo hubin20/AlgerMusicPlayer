@@ -548,15 +548,35 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
 watch(
   () => searchStore.searchValue,
   (value) => {
-    if (value) loadSearch(value, searchStore.searchType, false);
+    if (value && value !== currentKeyword.value) {
+      console.log('[SearchIndex] Watch searchValue changed:', value);
+      loadSearch(value, searchStore.searchType, false);
+    }
   }
 );
 
 watch(
   () => searchType.value,
-  (newType) => {
-    if (searchStore.searchValue) {
+  (newType, oldType) => {
+    if (searchStore.searchValue && newType !== oldType) {
+      console.log('[SearchIndex] Watch searchType changed:', newType);
       loadSearch(searchStore.searchValue, newType, false);
+    }
+  }
+);
+
+watch(
+  () => searchStore.searchTrigger,
+  (newTrigger, oldTrigger) => {
+    if (newTrigger > oldTrigger && searchStore.searchValue) {
+      console.log('[SearchIndex] Watch searchTrigger triggered. New:', newTrigger, 'Old:', oldTrigger, 'Keyword:', searchStore.searchValue, 'Type:', searchStore.searchType);
+      loadSearch(searchStore.searchValue, searchStore.searchType, false);
+    } else if (newTrigger > oldTrigger && !searchStore.searchValue) {
+      console.log('[SearchIndex] searchTrigger triggered but searchValue is empty.');
+      searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
+      hotKeyword.value = t('search.title.searchList');
+      loadHotSearch();
+      loadSearchHistory();
     }
   }
 );
