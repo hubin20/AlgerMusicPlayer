@@ -292,12 +292,28 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
         currentKwHasMore = kwRes.value.length === ITEMS_PER_PAGE;
       }
 
+      let combinedSongs = [...neteaseSongs, ...kwSongs];
+
+      // 自定义排序：将非 'netease' (其他来源) 的歌曲排在 'netease' (网易) 歌曲前面
+      combinedSongs.sort((a, b) => {
+        const aIsNetease = a.source === 'netease';
+        const bIsNetease = b.source === 'netease';
+
+        if (!aIsNetease && bIsNetease) {
+          return -1; // a (其他) 在前
+        }
+        if (aIsNetease && !bIsNetease) {
+          return 1;  // b (其他) 在前
+        }
+        return 0; // 同来源或无法判断，保持相对稳定
+      });
+
       if (isLoadMore && searchDetail.value) {
-        searchDetail.value.songs = [...searchDetail.value.songs, ...neteaseSongs, ...kwSongs].sort((_a, _b) => 0);
+        searchDetail.value.songs = [...searchDetail.value.songs, ...combinedSongs];
       } else {
         searchDetail.value = {
-          songs: [...neteaseSongs, ...kwSongs].sort((_a, _b) => 0),
-          albums: [], playlists: [], mvs: [], kwSongs: [] // 其他类型清空
+          songs: combinedSongs,
+          albums: [], playlists: [], mvs: [], kwSongs: [] // kwSongs 已合并入 songs
         };
       }
       hasMore.value = currentNeteaseHasMore || currentKwHasMore;
