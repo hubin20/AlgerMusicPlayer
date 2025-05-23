@@ -521,12 +521,17 @@ const initVideo = async () => {
     try {
       const mvId = typeof props.currentMv.id === 'string' ? parseInt(props.currentMv.id) : props.currentMv.id;
       if (typeof mvId !== 'number' || isNaN(mvId)) {
+        console.error('[MVPlayer] Invalid MV ID in initVideo:', props.currentMv.id);
         message.error(t('mv.loadFailedInvalidId'));
         throw new Error('Invalid MV ID');
       }
+      console.log('[MVPlayer] initVideo: Fetching MV URL for ID:', mvId);
       const res = await getMvUrl(mvId as number);
-      if (res.data.code === 200 && res.data.data.url) {
+      console.log('[MVPlayer] initVideo: API Response for ID', mvId, ':', JSON.stringify(res.data));
+
+      if (res.data.code === 200 && res.data.data && res.data.data.url) {
         mvUrl.value = res.data.data.url.replace(/^http:/, 'https:');
+        console.log('[MVPlayer] initVideo: Set mvUrl to:', mvUrl.value);
         autoPlayBlocked.value = false;
         isPlaying.value = false;
         currentTime.value = 0;
@@ -536,12 +541,19 @@ const initVideo = async () => {
           videoRef.value.load();
         }
       } else {
-        console.error('Failed to get MV URL:', res.data);
+        console.error('[MVPlayer] initVideo: Failed to get MV URL from API for ID', mvId, '. Response:', JSON.stringify(res.data));
         mvUrl.value = '';
-        message.error(t('mv.loadFailed'));
+        if (res.data.data && res.data.data.msg) {
+          message.error(res.data.data.msg);
+        } else if (res.data.msg && typeof res.data.msg === 'string' && res.data.msg.trim() !== '') {
+          message.error(res.data.msg);
+        }
+        else {
+          message.error(t('mv.loadFailed'));
+        }
       }
     } catch (error) {
-      console.error('Error fetching MV URL in initVideo:', error);
+      console.error('[MVPlayer] Error fetching MV URL in initVideo for ID', props.currentMv?.id, ':', error);
       mvUrl.value = '';
       message.error(t('mv.initFailed'));
     } finally {
@@ -663,9 +675,17 @@ const loadMvDetail = async (id: number) => {
   activeLoadingMessage = message.loading(t('mv.loading'), { duration: 0 });
   playLoading.value = true;
   try {
+    console.log('[MVPlayer] loadMvDetail: Fetching MV URL for ID:', id);
     const res = await getMvUrl(id);
-    if (res.data.code === 200 && res.data.data.url) {
+    console.log('[MVPlayer] loadMvDetail: API Response for ID', id, ':', JSON.stringify(res.data));
+
+    if (res.data.code === 200 && res.data.data && res.data.data.url) {
       mvUrl.value = res.data.data.url.replace(/^http:/, 'https:');
+      console.log('[MVPlayer] loadMvDetail: Set mvUrl to:', mvUrl.value);
+      autoPlayBlocked.value = false;
+      isPlaying.value = false;
+      currentTime.value = 0;
+      progress.value = 0;
       await nextTick();
       if (videoRef.value) {
         videoRef.value.volume = volume.value / 100;
@@ -682,11 +702,19 @@ const loadMvDetail = async (id: number) => {
         }
       }
     } else {
-      message.error(t('mv.loadFailed'));
+      console.error('[MVPlayer] loadMvDetail: Failed to get MV URL from API for ID', id, '. Response:', JSON.stringify(res.data));
+      if (res.data.data && res.data.data.msg) {
+        message.error(res.data.data.msg);
+      } else if (res.data.msg && typeof res.data.msg === 'string' && res.data.msg.trim() !== '') {
+        message.error(res.data.msg);
+      }
+      else {
+        message.error(t('mv.loadFailed'));
+      }
       emit('update:show', false);
     }
   } catch (error) {
-    console.error('获取MV详情失败:', error);
+    console.error('[MVPlayer] Error in loadMvDetail for ID', id, ':', error);
     message.error(t('mv.loadFailed'));
     emit('update:show', false);
   } finally {
