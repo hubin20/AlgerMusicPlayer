@@ -246,12 +246,6 @@ const initData = () => {
     listInfo.value = musicStore.currentListInfo || null;
     canRemove.value = musicStore.canRemoveSong || false;
     
-    // --- 添加打印语句 ---
-    console.log('[MusicListPage] Data from store - Name:', name.value);
-    console.log('[MusicListPage] Data from store - ListInfo:', JSON.parse(JSON.stringify(listInfo.value)));
-    console.log('[MusicListPage] Data from store - SongList:', JSON.parse(JSON.stringify(songList.value)));
-    // --- 打印语句结束 ---
-    
     // 初始化歌曲列表
     initSongList(songList.value);
     return;

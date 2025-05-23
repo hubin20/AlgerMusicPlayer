@@ -100,9 +100,6 @@ const handleClick = async () => {
       },
       description: res.data.album.description
     };
-
-    console.log('[SearchItem] Album Info:', JSON.parse(JSON.stringify(listInfo.value)));
-    console.log('[SearchItem] Song List:', JSON.parse(JSON.stringify(songList.value)));
     
     // 保存数据到store
     musicStore.setCurrentMusicList(

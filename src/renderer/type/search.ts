@@ -443,18 +443,15 @@ interface Album {
 interface Artist {
   name: string;
   id: number;
-  picId?: number;
-  img1v1Id?: number;
-  briefDesc?: string;
-  picUrl?: string;
-  img1v1Url?: string;
-  albumSize?: number;
-  alias?: string[];
-  trans?: string | null;
-  transNames?: string[] | null;
-  musicSize?: number;
-  topicPerson?: number;
-  picId_str?: string;
+  picId: number;
+  img1v1Id: number;
+  briefDesc: string;
+  picUrl: string;
+  img1v1Url: string;
+  albumSize: number;
+  alias: any[];
+  trans: string;
+  musicSize: number;
 }
 
 interface Creator {
@@ -667,26 +664,14 @@ interface Ar {
 export interface AlbumItem {
   id: number | string;
   name: string;
-  picUrl?: string; // 专辑封面, API 字段为 picUrl
-  blurPicUrl?: string; // API 字段
+  picUrl?: string; // 专辑封面
   artist?: Artist; // 主要艺人信息
   artists?: Artist[]; // 所有艺人列表
-  artistName?: string; // 艺人名，备用 (如果 artist 对象不存在时)
+  artistName?: string; // 艺人名，备用
   publishTime?: number; // 发行时间
   size?: number; // 包含歌曲数
   company?: string; //发行公司
-  description?: string; // API 字段
-  tags?: string; // API 字段
-  type?: '专辑'; // 修改为中文，与 SearchItem.vue 中的判断一致
   source?: 'netease' | 'kw' | 'other';
-  desc?: string; // 描述字段，用于 SearchItem
-  // 根据API截图增加的字段
-  idStr?: string;
-  status?: number;
-  copyrightId?: number;
-  commentThreadId?: string;
-  onSale?: boolean;
-  isSub?: boolean; // Netease API 特有
   [key: string]: any; // 其他可能的字段
 }
 
@@ -712,18 +697,12 @@ export interface PlaylistItem {
 export interface MvItem {
   id: number | string;
   name: string;
-  cover?: string; // MV封面, API 字段为 cover
-  picUrl?: string; // 兼容SearchItem组件, 可以考虑统一使用 cover
-  playCount?: number; // 播放次数
-  briefDesc?: string | null; // API 字段
-  desc?: string | null; // API 字段, 也用于 SearchItem
+  cover?: string; // MV封面
   artistName?: string; // 艺人名
-  artistId?: number; // API 字段
   artists?: Artist[]; // 艺人列表
+  playCount?: number; // 播放次数
   duration?: number; // 时长 (ms)
-  mark?: number; // API 字段
-  // publishTime?: string; // API中似乎没有直接的 publishTime，但有 duration, playCount 等
-  type?: 'mv'; // 用于区分项目类型
+  publishTime?: string; // 发布时间
   source?: 'netease' | 'kw' | 'other';
   [key: string]: any; // 其他可能的字段
 }
