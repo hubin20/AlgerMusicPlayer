@@ -213,7 +213,7 @@ const handleDownloadComplete = (_event: any, success: boolean, filePath: string)
 
 // 监听下载事件
 onMounted(() => {
-  checkForUpdates();
+  // checkForUpdates(); // 注释掉这行以禁用自动更新检查
   // 确保事件监听器只注册一次
   window.electron.ipcRenderer.removeListener('download-progress', handleDownloadProgress);
   window.electron.ipcRenderer.removeListener('download-complete', handleDownloadComplete);

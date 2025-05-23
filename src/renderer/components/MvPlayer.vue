@@ -183,7 +183,7 @@
 </template>
 
 <script setup lang="ts">
-import { NButton, NIcon, NSlider, NTooltip, useMessage } from 'naive-ui';
+import { NButton, NIcon, NSlider, NTooltip, useMessage, type MessageReactive } from 'naive-ui';
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -241,6 +241,8 @@ const nextLoading = ref(false);
 const prevLoading = ref(false);
 const isFullscreen = ref(false);
 const showModeHint = ref(false);
+
+let activeLoadingMessage: MessageReactive | null = null;
 
 let controlsTimer: NodeJS.Timeout | null = null;
 let cursorTimer: NodeJS.Timeout | null = null;
@@ -545,28 +547,39 @@ watch(
 
 watch(
   () => props.show,
-  (newValue) => {
-    if (newValue) {
-      document.addEventListener('fullscreenchange', () => {
-        isFullscreen.value = !!document.fullscreenElement;
-      });
+  (newShow, oldShow) => {
+    if (newShow) {
+      document.addEventListener('fullscreenchange', handleFullscreenChange);
       if (props.currentMv?.id && !mvUrl.value) {
-          initVideo();
+        initVideo();
       } else if (mvUrl.value && videoRef.value) {
+        // Potentially resume or re-check state if URL already exists
       }
       showControls.value = true;
       if (!isMobile.value) {
-          showCursor.value = true;
-          resetCursorTimer();
+        showCursor.value = true;
+        resetCursorTimer();
+      }
+      if (props.currentMv?.id) {
+        loadMvDetail(props.currentMv.id);
       }
     } else {
       if (videoRef.value) {
         videoRef.value.pause();
+        videoRef.value.src = '';
+      }
+      if (activeLoadingMessage) {
+        activeLoadingMessage.destroy();
+        activeLoadingMessage = null;
       }
       isPlaying.value = false;
-      document.removeEventListener('fullscreenchange', () => {
-        isFullscreen.value = !!document.fullscreenElement;
-      });
+      currentTime.value = 0;
+      progress.value = 0;
+      duration.value = 0;
+      playLoading.value = false;
+      autoPlayBlocked.value = false;
+
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
       if (controlsTimer) clearTimeout(controlsTimer);
       if (cursorTimer) clearTimeout(cursorTimer);
       if (modeHintTimer) clearTimeout(modeHintTimer);
@@ -616,6 +629,51 @@ watch(isPlaying, (playing) => {
     }
 });
 
+const loadMvDetail = async (id: number) => {
+  if (playLoading.value) return;
+
+  if (activeLoadingMessage) {
+    activeLoadingMessage.destroy();
+    activeLoadingMessage = null;
+  }
+  activeLoadingMessage = message.loading(t('mv.loading'), { duration: 0 });
+  playLoading.value = true;
+  try {
+    const res = await getMvUrl({ id });
+    if (res.data.code === 200 && res.data.data.url) {
+      mvUrl.value = res.data.data.url.replace(/^http:/, 'https:');
+      await nextTick();
+      if (videoRef.value) {
+        videoRef.value.volume = volume.value / 100;
+        try {
+          await videoRef.value.play();
+          isPlaying.value = true;
+          autoPlayBlocked.value = false;
+        } catch (error: any) {
+          console.warn('MV自动播放失败:', error);
+          if (error.name === 'NotAllowedError') {
+            autoPlayBlocked.value = true;
+            message.warning(t('player.autoplayBlocked'), { duration: 3000 });
+          }
+        }
+      }
+    } else {
+      message.error(t('mv.loadFailed'));
+      emit('update:show', false);
+    }
+  } catch (error) {
+    console.error('获取MV详情失败:', error);
+    message.error(t('mv.loadFailed'));
+    emit('update:show', false);
+  } finally {
+    playLoading.value = false;
+    if (activeLoadingMessage) {
+      activeLoadingMessage.destroy();
+      activeLoadingMessage = null;
+    }
+  }
+};
+
 onMounted(() => {
   if (videoRef.value) {
     volume.value = videoRef.value.volume * 100;
@@ -627,9 +685,13 @@ onUnmounted(() => {
   if (controlsTimer) clearTimeout(controlsTimer);
   if (cursorTimer) clearTimeout(cursorTimer);
   if (modeHintTimer) clearTimeout(modeHintTimer);
-  document.removeEventListener('fullscreenchange', () => {
-    isFullscreen.value = !!document.fullscreenElement;
-  });
+  document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  document.removeEventListener('keydown', handleKeyDown);
+
+  if (activeLoadingMessage) {
+    activeLoadingMessage.destroy();
+    activeLoadingMessage = null;
+  }
 });
 </script>
 
