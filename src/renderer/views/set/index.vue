@@ -522,9 +522,6 @@ import { type Platform } from '@/types/music';
 
 import config from '../../../../package.json';
 
-// 所有平台默认值
-const ALL_PLATFORMS: Platform[] = ['migu', 'kugou', 'pyncmd', 'bilibili', 'kuwo'];
-
 const platform = window.electron ? window.electron.ipcRenderer.sendSync('get-platform') : 'web';
 
 const settingsStore = useSettingsStore();
@@ -955,6 +952,9 @@ const showMusicSourcesModal = ref(false);
 
 // 远程控制设置弹窗
 const showRemoteControlModal = ref(false);
+
+// 修改 ALL_PLATFORMS 的定义，移除 bilibili，添加 other
+const ALL_PLATFORMS: Platform[] = ['migu', 'kugou', 'pyncmd', 'kuwo', 'gdmusic', 'other'];
 </script>
 
 <style lang="scss" scoped>

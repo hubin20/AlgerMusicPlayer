@@ -1,8 +1,9 @@
 import axios from 'axios';
-import type { SongResult, Artist, Album } from '@/type/music'; // 假设 Album 和 Artist 类型已定义
-import type { ILyric } from '@/type/lyric';
+// import type { AxiosResponse } from 'axios'; // 移除未使用的导入
+import type { SongResult, Artist, Album } from '@/type/music'; // Album 需要保留，因为它在 mapKwSongToSongResult 中直接作为 al 和 album 的类型注解
+// import type { ILyric } from '@/type/lyric'; // 移除未使用的导入
 
-const KW_API_BASE_URL = 'https://kw-api.cenguigui.cn/';
+const KW_API_BASE_URL = 'https://kw-api.cenguigui.cn'; // 在模块顶部定义常量
 
 // 定义 kw-api 返回的歌曲数据结构（根据文档示例）
 interface KwSongDataItem {
@@ -47,18 +48,19 @@ function mapArtistStringToArtistArray(artistStr: string): Artist[] {
   if (!artistStr) {
     return [];
   }
-  // kw-api 使用 '&' 或 '/' 或 '、' 分隔歌手，这里简单处理 '&'
-  // AlgerMusicPlayer 的 Artist 接口需要 id，这里暂时用 0 或歌手名
   return artistStr.split('&').map(name => ({
-    id: 0, // kw-api 没有提供歌手id，暂用0
+    id: 0,
     name: name.trim(),
-    picUrl: '', // kw-api 没有提供歌手头像
+    picUrl: '',
     img1v1Url: '',
     briefDesc: '',
     albumSize: 0,
     alias: [],
     trans: '',
     musicSize: 0,
+    picId: 0,
+    img1v1Id: 0,
+    topicPerson: 0
   }));
 }
 
@@ -68,31 +70,45 @@ function mapArtistStringToArtistArray(artistStr: string): Artist[] {
  * @returns Partial<SongResult> - 返回部分 SongResult，因为某些字段可能缺失
  */
 function mapKwSongToSongResult(kwSong: KwSongDataItem): SongResult {
+  const baseAlbum: Album = {
+    id: 0,
+    name: kwSong.album || '未知专辑',
+    picUrl: kwSong.pic,
+    picId_str: '',
+    pic: 0,
+    type: '',
+    size: 0,
+    picId: 0,
+    blurPicUrl: '',
+    companyId: 0,
+    publishTime: 0,
+    description: '',
+    tags: '',
+    company: '',
+    briefDesc: '',
+    artist: {
+      id: 0, name: '', picId: 0, img1v1Id: 0, briefDesc: '', picUrl: '', img1v1Url: '', albumSize: 0, alias: [], trans: '', musicSize: 0, topicPerson: 0
+    },
+    songs: [],
+    alias: [],
+    status: 0,
+    copyrightId: 0,
+    commentThreadId: '',
+    artists: [],
+    subType: '',
+    onSale: false,
+    mark: 0
+  };
   return {
     id: kwSong.rid,
     name: kwSong.name,
     ar: mapArtistStringToArtistArray(kwSong.artist),
-    artists: mapArtistStringToArtistArray(kwSong.artist), // 保持一致性
-    al: {
-      id: 0, // kw-api 没有提供专辑ID
-      name: kwSong.album || '未知专辑',
-      picUrl: kwSong.pic, // 使用歌曲图片作为专辑封面
-      pic_str: '', // kw-api 未提供
-      pic: 0 // kw-api 未提供
-    },
-    album: {
-      id: 0,
-      name: kwSong.album || '未知专辑',
-      picUrl: kwSong.pic,
-      pic_str: '',
-      pic: 0
-    },
+    artists: mapArtistStringToArtistArray(kwSong.artist),
+    al: { ...baseAlbum },
+    album: { ...baseAlbum },
     picUrl: kwSong.pic,
-    // dt 和 duration 需要根据实际播放时获取，或从其他字段转换（如果kw-api提供的话）
-    // duration: kwSong.duration_ms, // 假设有这个字段，并将其转换为秒
-    source: 'other', // 将 'kwmusic' 修改为 'other'
-    // 其他字段根据需要补充
-    count: 0, // 播放次数等，kw-api目前未直接提供
+    source: 'other',
+    count: 0,
   };
 }
 
@@ -101,14 +117,14 @@ function mapKwSongToSongResult(kwSong: KwSongDataItem): SongResult {
  * @param keywords - 搜索关键词
  * @param page - 页码
  * @param limit - 每页数量
- * @param searchType - 搜索类型 (虽然此API主要用于搜歌，但保留参数以备未来可能支持)
+ * @param _searchType - 搜索类型 (虽然此API主要用于搜歌，但保留参数以备未来可能支持)
  * @returns Promise<SongResult[]>
  */
 export async function searchKwMusic(
   keywords: string,
   page: number = 1,
   limit: number = 30,
-  searchType: number = 1 // 默认为1 (单曲)
+  _searchType: number = 1 // 将 searchType 改为 _searchType
 ): Promise<SongResult[]> {
   try {
     // 当前 API (kw-api.cenguigui.cn) 的搜索功能主要针对歌曲名称/歌手名，

@@ -1,4 +1,4 @@
-import type { Artist } from './music';
+// import type { Artist } from './music'; // 尝试移除导入
 
 export interface ISearchKeyword {
   code: number;
@@ -709,3 +709,19 @@ export interface MvItem {
 
 // 通用搜索结果条目，用于 SearchItem.vue 组件，具体类型在组件内部判断或外部传入
 export type SearchResultItem = AlbumItem | PlaylistItem | MvItem;
+
+export interface SearchSuggest {
+  albums?: Album[];
+  artists?: Artist[];
+  songs?: Song[];
+  playlists?: PlaylistItem[];
+  order?: string[];
+}
+
+export interface HotSearchItem {
+  // ... existing code ...
+}
+
+export interface PlaylistItem {
+  // ... existing code ...
+}

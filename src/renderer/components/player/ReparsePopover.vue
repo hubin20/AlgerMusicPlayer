@@ -30,7 +30,7 @@
             class="source-button flex items-center p-2 rounded-lg cursor-pointer transition-all duration-200 bg-light-200 dark:bg-dark-200 hover:bg-light-300 dark:hover:bg-dark-300"
             :class="{ 
               'bg-green-50 dark:bg-green-900/20 text-green-500': isCurrentSource(source.value),
-              'opacity-50 cursor-not-allowed': isReparsing || playMusic.source === 'bilibili'
+              'opacity-50 cursor-not-allowed': isReparsing
             }"
             @click="directReparseMusic(source.value)"
           >
@@ -48,9 +48,6 @@
             </div>
           </div>
         </div>
-      </div>
-      <div v-if="playMusic.source === 'bilibili'" class="text-red-500 text-sm">
-        {{ t('player.reparse.bilibiliNotSupported') }}
       </div>
     </div>
   </n-popover>
@@ -88,7 +85,6 @@ const musicSourceOptions = ref([
   { label: 'KuGou', value: 'kugou' as Platform },
   { label: 'pyncmd', value: 'pyncmd' as Platform },
   { label: 'KuWo', value: 'kuwo' as Platform },
-  { label: 'Bilibili', value: 'bilibili' as Platform },
   { label: 'GdMuisc', value: 'gdmusic' as Platform }
 ]);
 
@@ -100,14 +96,14 @@ const isCurrentSource = (source: Platform) => {
 // 获取音源图标
 const getSourceIcon = (source: Platform) => {
   const iconMap: Record<Platform, string> = {
-    'migu': 'ri-music-2-fill',
-    'kugou': 'ri-music-fill',
-    'kuwo': 'ri-album-fill',
-    'qq': 'ri-qq-fill',
-    'joox': 'ri-disc-fill',
-    'pyncmd': 'ri-netease-cloud-music-fill',
-    'bilibili': 'ri-bilibili-fill',
-    'gdmusic': 'ri-google-fill'
+    migu: 'ri-music-2-line',
+    kugou: 'ri-netease-cloud-music-line',
+    kuwo: 'ri-customer-service-2-line',
+    qq: 'ri-qq-line',
+    joox: 'ri-music-line',
+    pyncmd: 'ri-command-line',
+    gdmusic: 'ri-radio-2-line',
+    other: 'ri-music-box-line'
   };
 
   return iconMap[source] || 'ri-music-2-fill';
@@ -131,7 +127,7 @@ const initSelectedSources = () => {
 
 // 直接重新解析当前歌曲
 const directReparseMusic = async (source: Platform) => {
-  if (isReparsing.value || playMusic.value.source === 'bilibili') {
+  if (isReparsing.value) {
     return;
   }
   
@@ -176,7 +172,7 @@ watch(() => playMusic.value.id, async (newId) => {
     const savedSource = localStorage.getItem(`song_source_${songId}`);
     
     // 如果有保存的音源设置但当前不是使用自定义解析的播放，尝试应用
-    if (savedSource && playMusic.value.source !== 'bilibili') {
+    if (savedSource) {
       try {
         const sources = JSON.parse(savedSource) as Platform[];
         console.log(`检测到歌曲ID ${songId} 有自定义音源设置:`, sources);

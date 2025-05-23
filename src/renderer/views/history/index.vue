@@ -71,8 +71,9 @@ const getHistorySongs = async () => {
     const endIndex = startIndex + pageSize;
     const currentPageItems = musicList.value.slice(startIndex, endIndex);
 
-    // 只处理非B站历史
-    const neteaseItems = currentPageItems.filter((item) => item.source !== 'bilibili');
+    // // 只处理非B站历史 (Bilibili 相关判断注释)
+    // const neteaseItems = currentPageItems.filter((item) => item.source !== 'bilibili');
+    const neteaseItems = currentPageItems; // 直接使用 currentPageItems，不再过滤 Bilibili
 
     // 处理网易云音乐
     let neteaseSongs: SongResult[] = [];

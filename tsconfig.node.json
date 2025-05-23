@@ -11,6 +11,7 @@
     "types": [
       "electron-vite/node"
     ],
-    "moduleResolution": "bundler",
+    "module": "esnext",
+    "moduleResolution": "bundler"
   }
 }

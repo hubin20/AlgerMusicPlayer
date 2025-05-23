@@ -1,6 +1,7 @@
 import match from '@unblockneteasemusic/server';
+// import type { AxiosResponse } from 'axios'; // 移除未使用的导入
 
-type Platform = 'qq' | 'migu' | 'kugou' | 'pyncmd' | 'joox' | 'kuwo' | 'bilibili';
+type Platform = 'qq' | 'migu' | 'kugou' | 'pyncmd' | 'joox' | 'kuwo' | 'other';
 
 interface SongData {
   name: string;
@@ -30,7 +31,7 @@ interface UnblockResult {
 }
 
 // 所有可用平台
-export const ALL_PLATFORMS: Platform[] = ['migu', 'kugou', 'pyncmd', 'kuwo', 'bilibili'];
+export const ALL_PLATFORMS: Platform[] = ['migu', 'kugou', 'pyncmd', 'kuwo', 'other'];
 
 /**
  * 音乐解析函数
@@ -47,10 +48,10 @@ const unblockMusic = async (
   enabledPlatforms?: Platform[]
 ): Promise<UnblockResult> => {
   // 过滤 enabledPlatforms，确保只包含 ALL_PLATFORMS 中存在的平台
-  const filteredPlatforms = enabledPlatforms 
+  const filteredPlatforms = enabledPlatforms
     ? enabledPlatforms.filter(platform => ALL_PLATFORMS.includes(platform))
     : ALL_PLATFORMS;
-  
+
   songData.album = songData.album || songData.al;
   songData.artists = songData.artists || songData.ar;
   const retry = async (attempt: number): Promise<UnblockResult> => {

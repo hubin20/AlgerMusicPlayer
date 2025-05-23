@@ -183,8 +183,8 @@
 </template>
 
 <script setup lang="ts">
-import { NButton, NIcon, NSlider, NTooltip } from 'naive-ui';
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { NButton, NIcon, NSlider, NTooltip, useMessage } from 'naive-ui';
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import { getMvUrl } from '@/api/mv';
@@ -192,6 +192,8 @@ import { IMvItem } from '@/type/mv';
 import { isMobile } from '@/utils';
 
 const { t } = useI18n();
+const message = useMessage();
+
 type PlayMode = 'single' | 'auto';
 const PLAY_MODE = {
   Single: 'single' as PlayMode,
@@ -489,31 +491,42 @@ const handlePrev = () => {
   if (!isMobile.value) resetCursorTimer();
 };
 
-const loadMv = async () => {
-  if (!props.currentMv?.id) {
-    mvUrl.value = '';
-    return;
-  }
-  try {
-    const res = await getMvUrl(props.currentMv.id.toString());
-    if (res.data.code === 200 && res.data.data?.url) {
-      mvUrl.value = res.data.data.url.replace(/^http:/, 'https:');
-      autoPlayBlocked.value = false;
-      isPlaying.value = false;
-      currentTime.value = 0;
-      progress.value = 0;
-      nextTick(() => {
-        if (videoRef.value) {
-          videoRef.value.load();
+const initVideo = async () => {
+  if (props.currentMv && props.currentMv.id) {
+    try {
+      const loadingMessage = message.loading(t('mv.loading'), { duration: 0 });
+
+      const mvId = typeof props.currentMv.id === 'string' ? parseInt(props.currentMv.id) : props.currentMv.id;
+      if (typeof mvId !== 'number') {
+        message.error(t('mv.loadFailed'));
+        if (loadingMessage && typeof (loadingMessage as any).destroy === 'function') {
+          (loadingMessage as any).destroy();
+        } else {
+          message.destroyAll();
         }
-      });
-    } else {
-      console.error('Failed to get MV URL:', res.data);
+        return;
+      }
+      const res = await getMvUrl(mvId as number);
+      if (res.data.code === 200 && res.data.data.url) {
+        mvUrl.value = res.data.data.url;
+        autoPlayBlocked.value = false;
+        isPlaying.value = false;
+        currentTime.value = 0;
+        progress.value = 0;
+        nextTick(() => {
+          if (videoRef.value) {
+            videoRef.value.load();
+          }
+        });
+      } else {
+        console.error('Failed to get MV URL:', res.data);
+        mvUrl.value = '';
+      }
+    } catch (error) {
+      console.error('Error fetching MV URL:', error);
       mvUrl.value = '';
+      message.destroyAll();
     }
-  } catch (error) {
-    console.error('Error fetching MV URL:', error);
-    mvUrl.value = '';
   }
 };
 
@@ -521,7 +534,7 @@ watch(
   () => props.currentMv,
   (newMv) => {
     if (newMv && props.show) {
-      loadMv();
+      initVideo();
     } else if (!props.show && videoRef.value) {
         videoRef.value.pause();
         mvUrl.value = '';
@@ -538,7 +551,7 @@ watch(
         isFullscreen.value = !!document.fullscreenElement;
       });
       if (props.currentMv?.id && !mvUrl.value) {
-          loadMv();
+          initVideo();
       } else if (mvUrl.value && videoRef.value) {
       }
       showControls.value = true;

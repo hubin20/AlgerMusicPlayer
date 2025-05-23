@@ -146,7 +146,7 @@ interface BMusic {
   volumeDelta: number;
 }
 
-interface Album {
+export interface Album {
   name: string;
   id: number;
   type: string;

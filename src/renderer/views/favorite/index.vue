@@ -6,7 +6,7 @@
           <div class="favorite-count">{{ t('favorite.count', { count: favoriteList.length }) }}</div>
         </div>
         <div v-if="!isComponent && isElectron" class="favorite-header-right">
-          <div class="sort-controls" v-if="!isSelecting">
+          <!-- <div class="sort-controls" v-if="!isSelecting">
             <div class="sort-buttons">
               <div 
                 class="sort-button" 
@@ -25,7 +25,7 @@
                 {{ t('favorite.ascending') }}
               </div>
             </div>
-          </div>
+          </div> -->
           <n-button
             v-if="!isSelecting"
             secondary
@@ -116,9 +116,11 @@
   import type { SongResult } from '@/type/music';
   import { isElectron, setAnimationClass, setAnimationDelay } from '@/utils';
 
-  const { t } = useI18n();
   const playerStore = usePlayerStore();
+  const { t } = useI18n();
   const message = useMessage();
+  const router = useRouter();
+
   const favoriteList = computed(() => playerStore.favoriteList);
   const favoriteSongs = ref<SongResult[]>([]);
   const loading = ref(false);
@@ -238,22 +240,11 @@
 
   // 排序相关
   const isDescending = ref(true); // 默认倒序显示
-
-  // 切换排序方式
-  const toggleSort = (descending: boolean) => {
-    if (isDescending.value === descending) return;
-    isDescending.value = descending;
-    currentPage.value = 1;
-    favoriteSongs.value = [];
-    noMore.value = false;
-    getFavoriteSongs();
-  };
-
-  // 无限滚动相关
-  const pageSize = 20; // 默认每页数量
   const currentPage = ref(1);
+  const pageSize = 20;
 
-  const props = defineProps({
+  // defineProps 声明 props，props 变量本身在 <script setup> 中可以不使用
+  defineProps({
     isComponent: {
       type: Boolean,
       default: false
@@ -339,7 +330,6 @@
     return setAnimationDelay(index, 30);
   };
 
-  const router = useRouter();
   const handleMore = () => {
     router.push('/history');
   };

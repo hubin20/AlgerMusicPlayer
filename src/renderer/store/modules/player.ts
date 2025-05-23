@@ -153,8 +153,14 @@ export const getSongUrl = async (
       const unblockServiceTimeout = createTimeoutPromise(7000, 'Unblock service request timed out');
       cancelTimeouts.push(unblockServiceTimeout.cancel);
 
-      const unblockServiceActualPromise = new Promise<string | null>((resolve) => { // Removed reject, as we resolve to null on failure
-        getParsingMusicUrl(numericId, songData.name || '', songData.artists?.[0]?.name || '')
+      const unblockServiceActualPromise = new Promise<string | null>((resolve) => {
+        // 构造一个临时的 SongResult 对象传递给 getParsingMusicUrl
+        const tempDataForParsing: Pick<SongResult, 'id' | 'name' | 'source'> = {
+          id: numericId,
+          name: songData.name || '未知歌曲',
+          source: 'netease' // 或 songData.source 如果确定是网易云
+        };
+        getParsingMusicUrl(numericId, tempDataForParsing as SongResult) // 传递构造的对象
           .then((unblockData) => {
             if (unblockData && unblockData.url) {
               console.log('[PlayerStore GetSongUrl] Netease: URL from getParsingMusicUrl (unm.931125.xyz) is usable:', unblockData.url);
@@ -272,15 +278,15 @@ const parseLyrics = (lyricsString: string): { lyrics: ILyricText[]; times: numbe
   return { lyrics, times };
 };
 
-export const loadLrc = async (id: string | number, source?: Platform, songData?: SongResult): Promise<ILyric> => {
-  // B站特殊处理
-  if (source === 'bilibili' || (typeof id === 'string' && id.includes('--'))) {
-    console.log('B站音频，无需加载歌词');
-    return {
-      lrcTimeArray: [],
-      lrcArray: []
-    };
-  }
+export const loadLrc = async (id: string | number, source?: SongResult['source']): Promise<ILyric> => {
+  // // B站特殊处理 (已注释)
+  // if (source === 'bilibili' || (typeof id === 'string' && id.includes('--'))) {
+  //   console.log('B站音频，无需加载歌词');
+  //   return {
+  //     lrcTimeArray: [],
+  //     lrcArray: []
+  //   };
+  // }
 
   // 酷我音乐处理 (source 为 'other' 时)
   if (source === 'other') {
@@ -305,10 +311,10 @@ export const loadLrc = async (id: string | number, source?: Platform, songData?:
     }
   }
 
-  // 默认处理 (网易云)
+  // 默认处理 (网易云或 source 为 undefined 时)
   try {
     const numericId = typeof id === 'string' ? parseInt(id, 10) : id;
-    const { data } = await getMusicLrc(numericId); // 确保 getMusicLrc 是网易云的歌词接口
+    const { data } = await getMusicLrc(numericId);
     const { lyrics, times } = parseLyrics(data.lrc.lyric);
     const tlyric: Record<string, string> = {};
 
@@ -337,32 +343,33 @@ const loadLrcAsync = async (playMusic: SongResult) => {
     return;
   }
   // 在调用 loadLrc 时传递 source
-  const lyrics = await loadLrc(playMusic.id, playMusic.source, playMusic);
+  const lyrics = await loadLrc(playMusic.id, playMusic.source);
   playMusic.lyric = lyrics;
 };
 
 const getSongDetail = async (playMusic: SongResult) => {
   // playMusic.playLoading 在 handlePlayMusic 中已设置，这里不再设置
 
-  if (playMusic.source === 'bilibili') {
-    console.log('处理B站音频详情');
-    try {
-      // 如果需要获取URL
-      if (!playMusic.playMusicUrl && playMusic.bilibiliData) {
-        playMusic.playMusicUrl = await getBilibiliAudioUrl(
-          playMusic.bilibiliData.bvid,
-          playMusic.bilibiliData.cid
-        );
-      }
+  // // Bilibili 逻辑移除 (已注释)
+  // if (playMusic.source === 'bilibili') {
+  //   console.log('处理B站音频详情');
+  //   try {
+  //     // 如果需要获取URL
+  //     if (!playMusic.playMusicUrl && playMusic.bilibiliData) {
+  //       // playMusic.playMusicUrl = await getBilibiliAudioUrl( // 调用 getBilibiliAudioUrl (已注释)
+  //       //   playMusic.bilibiliData.bvid,
+  //       //   playMusic.bilibiliData.cid
+  //       // );
+  //     }
 
-      playMusic.playLoading = false;
-      return { ...playMusic } as SongResult;
-    } catch (error) {
-      console.error('获取B站音频详情失败:', error);
-      playMusic.playLoading = false;
-      throw error;
-    }
-  }
+  //     playMusic.playLoading = false;
+  //     return { ...playMusic } as SongResult;
+  //   } catch (error) {
+  //     console.error('获取B站音频详情失败:', error);
+  //     playMusic.playLoading = false;
+  //     throw error;
+  //   }
+  // }
 
   if (playMusic.expiredAt && playMusic.expiredAt < Date.now()) {
     console.info(`歌曲已过期，重新获取: ${playMusic.name}`);
@@ -463,7 +470,7 @@ const fetchSongs = async (playList: SongResult[], startIndex: number, endIndex: 
     const nextSong = detailedSongs[0];
     if (nextSong && !(nextSong.lyric && nextSong.lyric.lrcTimeArray.length > 0)) {
       try {
-        nextSong.lyric = await loadLrc(nextSong.id, nextSong.source, nextSong);
+        nextSong.lyric = await loadLrc(nextSong.id, nextSong.source);
       } catch (error) {
         console.error('加载歌词失败:', error);
       }
@@ -600,8 +607,8 @@ export const usePlayerStore = defineStore('player', () => {
         (prev: string, curr: any) => `${prev}${curr.name}/`,
         ''
       )}`;
-    } else if (music.source === 'bilibili' && music?.song?.ar?.[0]) {
-      title += ` - ${music.song.ar[0].name}`;
+    } else if (music.source === 'other' && music?.ar?.[0]) { // 假设 'other' (酷我) 也有 ar 结构
+      title += ` - ${music.ar[0].name}`;
     }
     document.title = 'AlgerMusic - ' + title;
 
@@ -1127,44 +1134,44 @@ export const usePlayerStore = defineStore('player', () => {
   };
 
   const addToFavorite = async (id: number | string) => {
-    // 检查是否已存在相同的ID或内容相同的B站视频
-    const isAlreadyInList = favoriteList.value.some(existingId =>
-      typeof id === 'string' && id.includes('--')
-        ? isBilibiliIdMatch(existingId, id)
-        : existingId === id
-    );
+    const userStore = useUserStore();
+    const { message } = createDiscreteApi(['message']);
 
-    if (!isAlreadyInList) {
-      favoriteList.value.push(id);
+    if (!userStore.user || !userStore.user.userId) {
+      message.error(i18n.global.t('login.loginFirst'));
+      return;
+    }
+    if (!favoriteList.value.includes(id as number)) { // 直接检查数字 ID
+      favoriteList.value.push(id as number);
       localStorage.setItem('favoriteList', JSON.stringify(favoriteList.value));
-      typeof id === 'number' && useUserStore().user && likeSong(id, true);
+      message.success(i18n.global.t('message.addedToFavorites'));
+      if (typeof id === 'number') {
+        likeSong(id, true);
+      }
+    } else {
+      message.warning(i18n.global.t('message.alreadyInFavorites'));
     }
   };
 
   const removeFromFavorite = async (id: number | string) => {
-    // 对于B站视频，需要根据bvid和cid来匹配
-    if (typeof id === 'string' && id.includes('--')) {
-      favoriteList.value = favoriteList.value.filter(existingId => !isBilibiliIdMatch(existingId, id));
-    } else {
-      favoriteList.value = favoriteList.value.filter(existingId => existingId !== id);
-      useUserStore().user && likeSong(Number(id), false);
-    }
+    favoriteList.value = favoriteList.value.filter((favId) => favId !== id);
     localStorage.setItem('favoriteList', JSON.stringify(favoriteList.value));
+    message.success(i18n.global.t('message.removedFromFavorites'));
+    if (typeof id === 'number') {
+      likeSong(id, false);
+    }
   };
 
   const removeFromPlayList = (id: number | string) => {
-    const index = playList.value.findIndex((item) => item.id === id);
-    if (index === -1) return;
+    const initialLength = playList.value.length;
+    playList.value = playList.value.filter(music => music.id !== id);
 
-    // 如果删除的是当前播放的歌曲，先切换到下一首
-    if (id === playMusic.value.id) {
-      nextPlay();
+    if (playList.value.length < initialLength) {
+      if (id === playMusic.value.id) {
+        nextPlay();
+      }
+      setPlayList(playList.value);
     }
-
-    // 从播放列表中移除，使用不可变的方式
-    const newPlayList = [...playList.value];
-    newPlayList.splice(index, 1);
-    setPlayList(newPlayList);
   };
 
   // 设置播放速度
@@ -1191,13 +1198,6 @@ export const usePlayerStore = defineStore('player', () => {
         console.log('恢复上次播放的音乐:', savedPlayMusic.name);
         console.log('settingStore.setData', settingStore.setData);
         const isPlaying = settingStore.setData.autoPlay;
-
-        // 如果是B站视频，确保播放URL能够在重启后正确恢复
-        if (savedPlayMusic.source === 'bilibili' && savedPlayMusic.bilibiliData) {
-          console.log('恢复B站视频播放', savedPlayMusic.bilibiliData);
-          // 清除之前可能存在的播放URL，确保重新获取
-          savedPlayMusic.playMusicUrl = undefined;
-        }
 
         await handlePlayMusic({ ...savedPlayMusic, playMusicUrl: undefined }, isPlaying);
 
@@ -1275,29 +1275,6 @@ export const usePlayerStore = defineStore('player', () => {
         initialPosition = savedProgress.progress;
       }
 
-      // 对于B站视频，检查URL是否有效
-      if (playMusic.value.source === 'bilibili' && (!playMusicUrl.value || playMusicUrl.value === 'undefined')) {
-        console.log('B站视频URL无效，尝试重新获取');
-
-        // 需要重新获取B站视频URL
-        if (playMusic.value.bilibiliData) {
-          try {
-            const proxyUrl = await getBilibiliAudioUrl(
-              playMusic.value.bilibiliData.bvid,
-              playMusic.value.bilibiliData.cid
-            );
-
-            // 设置URL到播放器状态
-            (playMusic.value as any).playMusicUrl = proxyUrl;
-            playMusicUrl.value = proxyUrl;
-          } catch (error) {
-            console.error('获取B站音频URL失败:', error);
-            message.error(i18n.global.t('player.playFailed'));
-            return null;
-          }
-        }
-      }
-
       // 播放新音频，传递是否应该播放的状态
       console.log('调用audioService.play，播放状态:', shouldPlay);
       const newSound = await audioService.play(playMusicUrl.value, playMusic.value, shouldPlay);
@@ -1361,55 +1338,57 @@ export const usePlayerStore = defineStore('player', () => {
   };
 
   // 使用指定的音源重新解析当前播放的歌曲
-  const reparseCurrentSong = async (sourcePlatform: Platform) => {
+  const reparseCurrentSong = async (sourcePlatform: Platform | 'netease') => {
+    const { message } = createDiscreteApi(['message']);
+    if (!playMusic.value || !playMusic.value.id) {
+      message.error('没有当前歌曲可供重新解析');
+      return false;
+    }
+    console.log(`[PlayerStore Reparse] Attempting to reparse: ${playMusic.value.name} for platform: ${sourcePlatform}`);
+    const currentSong = cloneDeep(playMusic.value);
+    let newUrl: string | undefined = undefined;
+    let success = false;
+
     try {
-      const currentSong = playMusic.value;
-      if (!currentSong || !currentSong.id) {
-        console.warn('没有有效的播放对象');
+      if (sourcePlatform === 'other') { // 假设 'other' 是酷我
+        const kwUrl = await getKwMusicPlayUrl(currentSong.id as number, 'exhigh');
+        if (kwUrl && typeof kwUrl === 'string') {
+          newUrl = kwUrl;
+          success = true;
+        } else {
+          console.error('从 getKwMusicPlayUrl 获取到的酷我音乐 URL 无效或为 null');
+        }
+      } else if (sourcePlatform === 'netease') { // 处理 'netease'
+        const neteaseUrlData = await getSongUrl(currentSong.id, currentSong);
+        if (typeof neteaseUrlData === 'string' && neteaseUrlData.startsWith('http')) {
+          newUrl = neteaseUrlData;
+          success = true;
+        } else if (typeof neteaseUrlData === 'object' && neteaseUrlData !== null && typeof (neteaseUrlData as any).url === 'string' && (neteaseUrlData as any).url.startsWith('http')) {
+          newUrl = (neteaseUrlData as any).url;
+          success = true;
+        } else {
+          console.error('从 getSongUrl 获取到的网易云音乐 URL 无效或格式不正确:', neteaseUrlData);
+        }
+      }
+      // 其他平台的解析逻辑可以按需添加, e.g. else if (sourcePlatform === 'qq') { ... }
+
+      if (!success || !newUrl) {
+        message.error('无法获取有效的新播放链接');
         return false;
       }
 
-      // B站视频不支持重新解析
-      if (currentSong.source === 'bilibili') {
-        console.warn('B站视频不支持重新解析');
-        return false;
-      }
+      // 使用新URL更新播放
+      const updatedMusic = {
+        ...currentSong,
+        playMusicUrl: newUrl,
+        expiredAt: Date.now() + 1800000  // 半小时后过期
+      };
 
-      // 保存用户选择的音源
-      const songId = String(currentSong.id);
-      localStorage.setItem(`song_source_${songId}`, JSON.stringify([sourcePlatform]));
+      // 更新播放器状态并开始播放
+      await setPlay(updatedMusic);
+      setPlayMusic(true);
 
-      // 停止当前播放
-      const currentSound = audioService.getCurrentSound();
-      if (currentSound) {
-        currentSound.pause();
-      }
-
-      // 重新获取歌曲URL
-      const numericId = typeof currentSong.id === 'string'
-        ? parseInt(currentSong.id, 10)
-        : currentSong.id;
-
-      const res = await getParsingMusicUrl(numericId, cloneDeep(currentSong));
-      if (res && res.data && res.data.data && res.data.data.url) {
-        // 更新URL
-        const newUrl = res.data.data.url;
-
-        // 使用新URL更新播放
-        const updatedMusic = {
-          ...currentSong,
-          playMusicUrl: newUrl,
-          expiredAt: Date.now() + 1800000  // 半小时后过期
-        };
-
-        // 更新播放器状态并开始播放
-        await setPlay(updatedMusic);
-        setPlayMusic(true);
-
-        return true;
-      } else {
-        return false;
-      }
+      return success;
     } catch (error) {
       console.error('重新解析失败:', error);
       return false;

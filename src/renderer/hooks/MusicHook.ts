@@ -863,60 +863,32 @@ audioService.on('url_expired', async (expiredTrack) => {
     const currentPosition = nowTime.value; // 保存当前播放进度
     console.log('保存当前播放进度:', currentPosition);
 
-    // 处理B站视频
-    if (expiredTrack.source === 'bilibili' && expiredTrack.bilibiliData) {
-      console.log('重新获取B站视频URL');
-      try {
-        // 使用API中的函数获取B站音频URL
-        const newUrl = await getBilibiliAudioUrl(
-          expiredTrack.bilibiliData.bvid,
-          expiredTrack.bilibiliData.cid
-        );
-
-        console.log('成功获取新的B站URL:', newUrl);
-
-        // 更新存储
-        (expiredTrack as any).playMusicUrl = newUrl;
-        playerStore.playMusicUrl = newUrl;
-
-        // 重新播放并设置进度
-        const newSound = await audioService.play(newUrl, expiredTrack);
-        sound.value = newSound as Howl;
-
-        // 恢复播放进度
-        if (currentPosition > 0) {
-          newSound.seek(currentPosition);
-          nowTime.value = currentPosition;
-          console.log('恢复播放进度:', currentPosition);
-        }
-
-        // 如果之前是播放状态，继续播放
-        if (playerStore.play) {
-          newSound.play();
-          playerStore.setIsPlay(true);
-        }
-
-        message.success('已自动恢复播放');
-      } catch (error) {
-        console.error('重新获取B站URL失败:', error);
-        message.error('重新获取音频地址失败，请手动点击播放');
-      }
-    } else if (expiredTrack.source === 'netease') {
+    if (expiredTrack.source === 'netease') { // 保留网易云的逻辑，但移除了 Bilibili 的 else if
       // 处理网易云音乐，重新获取URL
       console.log('重新获取网易云音乐URL');
       try {
 
-        const newUrl = await getSongUrl(expiredTrack.id, expiredTrack as any);
+        const urlData = await getSongUrl(expiredTrack.id, expiredTrack as any);
+        let newUrl: string | undefined = undefined;
+
+        if (typeof urlData === 'string') {
+          newUrl = urlData;
+        } else if (typeof urlData === 'object' && urlData !== null && typeof urlData.url === 'string') {
+          newUrl = urlData.url;
+        } else {
+          console.error('从 getSongUrl 获取到的 newUrl 类型不正确或缺少 url 属性:', urlData);
+          throw new Error('获取URL失败，格式不正确');
+        }
 
         if (newUrl) {
           console.log('成功获取新的网易云URL:', newUrl);
 
           // 更新存储
           (expiredTrack as any).playMusicUrl = newUrl;
-          playerStore.playMusicUrl = newUrl;
+          playerStore.playMusicUrl = newUrl; // 现在 newUrl 肯定是 string
 
           // 重新播放并设置进度
-          const newSound = await audioService.play(newUrl, expiredTrack);
+          const newSound = await audioService.play(newUrl, expiredTrack); // newUrl 肯定是 string
           sound.value = newSound as Howl;
 
           // 恢复播放进度
