@@ -171,7 +171,7 @@ const route = useRoute();
 const playerStore = usePlayerStore();
 const searchStore = useSearchStore();
 
-const searchDetail = ref<{\n  songs: SongResult[];\n  albums: AlbumItem[]; \n  playlists: PlaylistItem[]; \n  mvs: MvItem[]; \n  kwSongs: SongResult[];\n} | null>(null);
+const searchDetail = ref<{ songs: SongResult[]; albums: AlbumItem[]; playlists: PlaylistItem[]; mvs: MvItem[]; kwSongs: SongResult[]; } | null>(null);
 
 const searchType = computed(() => searchStore.searchType as number);
 const searchDetailLoading = ref(false);
