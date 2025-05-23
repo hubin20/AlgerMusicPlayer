@@ -419,25 +419,67 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
       if (searchDetail.value) { // Add null check
         if (searchTypeToUse === SEARCH_TYPE.MUSIC) {
           searchDetail.value.songs = [...searchDetail.value.songs, ...neteaseSongs, ...kwSongsResult].sort((_a, _b) => 0);
-        } else {
+        } else if (searchTypeToUse === SEARCH_TYPE.ALBUM) {
           searchDetail.value.albums = [...searchDetail.value.albums, ...neteaseAlbums];
+        } else if (searchTypeToUse === SEARCH_TYPE.PLAYLIST) {
           searchDetail.value.playlists = [...searchDetail.value.playlists, ...neteasePlaylists];
+        } else if (searchTypeToUse === SEARCH_TYPE.MV) {
           searchDetail.value.mvs = [...searchDetail.value.mvs, ...neteaseMvs];
-          searchDetail.value.kwSongs = [...searchDetail.value.kwSongs, ...kwSongsResult];
+        }
+        // For non-music types, kwSongs and neteaseSongs (if any) are appended to their respective general lists if they exist.
+        if (searchTypeToUse !== SEARCH_TYPE.MUSIC) {
+          if (kwSongsResult.length > 0) {
+             searchDetail.value.kwSongs = [...searchDetail.value.kwSongs, ...kwSongsResult];
+          }
           if (neteaseSongs.length > 0) {
               searchDetail.value.songs = [...searchDetail.value.songs, ...neteaseSongs];
           }
         }
       }
     } else {
-      // Ensure searchDetail.value is not null before assigning
-      searchDetail.value = {
-        songs: neteaseSongs,
-        albums: neteaseAlbums,
-        playlists: neteasePlaylists,
-        mvs: neteaseMvs,
-        kwSongs: kwSongsResult
-      };
+      // Not loadMore: Initialize searchDetail based on searchTypeToUse
+      if (searchTypeToUse === SEARCH_TYPE.MUSIC) {
+        searchDetail.value = {
+          songs: [...neteaseSongs, ...kwSongsResult].sort((_a, _b) => 0),
+          albums: [],
+          playlists: [],
+          mvs: [],
+          kwSongs: [] // kwSongs are merged into songs for MUSIC type
+        };
+      } else if (searchTypeToUse === SEARCH_TYPE.ALBUM) {
+        searchDetail.value = {
+          songs: neteaseSongs, // Keep other netease songs if API returns them
+          albums: neteaseAlbums,
+          playlists: [],
+          mvs: [],
+          kwSongs: kwSongsResult
+        };
+      } else if (searchTypeToUse === SEARCH_TYPE.PLAYLIST) {
+        searchDetail.value = {
+          songs: neteaseSongs,
+          albums: [],
+          playlists: neteasePlaylists,
+          mvs: [],
+          kwSongs: kwSongsResult
+        };
+      } else if (searchTypeToUse === SEARCH_TYPE.MV) {
+        searchDetail.value = {
+          songs: neteaseSongs,
+          albums: [],
+          playlists: [],
+          mvs: neteaseMvs,
+          kwSongs: kwSongsResult
+        };
+      } else {
+        // Fallback or general case if a specific type isn't matched
+        searchDetail.value = {
+          songs: neteaseSongs,
+          albums: neteaseAlbums,
+          playlists: neteasePlaylists,
+          mvs: neteaseMvs,
+          kwSongs: kwSongsResult
+        };
+      }
     }
 
     hasMore.value = currentNeteaseHasMore || currentKwHasMore;
