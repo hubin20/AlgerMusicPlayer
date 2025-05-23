@@ -114,8 +114,7 @@ const handleClick = async () => {
         songList,
         albumData.name,
         { ...albumData, tracks: songList, trackIds: songList.map((s:any) => ({id: s.id})) },
-        false,
-        'album'
+        false
       );
       router.push({
         name: 'musicList',

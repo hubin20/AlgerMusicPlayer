@@ -753,7 +753,7 @@ const toggleCollect = async () => {
   if (route.query.type !== 'playlist' || !listInfo.value?.id) return;
   loading.value = true;
   try {
-    const op = isCollected.value ? 'del' : 'add'; // 'del' for unsubscribe, 'add' for subscribe
+    // const op = isCollected.value ? 'del' : 'add'; // 'del' for unsubscribe, 'add' for subscribe
     // 假设 subscribePlaylist API 的 type 参数是 1 表示收藏，2 表示取消收藏
     const subscribeType = isCollected.value ? 2 : 1;
     await subscribePlaylist({ t: subscribeType, id: listInfo.value.id });

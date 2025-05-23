@@ -159,7 +159,7 @@ import { usePlayerStore } from '@/store/modules/player';
 import { useSearchStore } from '@/store/modules/search';
 import type { IHotSearch, AlbumItem, PlaylistItem, MvItem } from '@/type/search';
 import type { SongResult, Artist } from '@/type/music';
-import { isMobile, setAnimationClass, setAnimationDelay, formatNumber, secondToMinute } from '@/utils';
+import { isMobile, setAnimationClass, setAnimationDelay, secondToMinute } from '@/utils';
 import { NSpin, NButton, NTag } from 'naive-ui';
 
 defineOptions({
@@ -275,12 +275,39 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
           return {
             id: song.id, name: song.name,
             picUrl: song.al?.picUrl || song.album?.picUrl || song.al?.coverUrl || song.album?.coverUrl || '',
-            duration: song.dt || song.duration || 0, artists: artists,
+            duration: song.dt || song.duration || 0, 
+            ar: artists,
+            al: song.al,
             album: {
-              id: song.al?.id || song.album?.id || 0, name: song.al?.name || song.album?.name || '未知专辑',
+              id: song.al?.id || song.album?.id || 0,
+              name: song.al?.name || song.album?.name || '未知专辑',
               picUrl: song.al?.picUrl || song.album?.picUrl || song.al?.coverUrl || song.album?.coverUrl || '',
+              type: song.al?.type || '未知类型',
+              size: song.al?.size || 0,
+              picId: song.al?.picId || 0,
+              blurPicUrl: song.al?.blurPicUrl || song.al?.picUrl || '',
+              companyId: song.al?.companyId || 0,
+              pic: song.al?.pic || 0,
+              publishTime: song.al?.publishTime || 0,
+              description: song.al?.description || '',
+              tags: song.al?.tags || '',
+              company: song.al?.company || '',
+              briefDesc: song.al?.briefDesc || '',
+              artist: song.al?.artist || ({} as Artist),
+              songs: song.al?.songs || [],
+              alias: song.al?.alias || [],
+              status: song.al?.status || 0,
+              copyrightId: song.al?.copyrightId || 0,
+              commentThreadId: song.al?.commentThreadId || '',
+              artists: song.al?.artists || [],
+              subType: song.al?.subType || '',
+              transName: song.al?.transName || '',
+              onSale: song.al?.onSale || false,
+              mark: song.al?.mark || 0,
+              picId_str: song.al?.picId_str || ''
             },
-            source: 'netease', type: 'music', privilege: song.privilege, fee: song.fee, sq: song.sq, hr: song.hr, pl: song.pl
+            source: 'netease', type: SEARCH_TYPE.MUSIC, 
+            privilege: song.privilege, fee: song.fee, sq: song.sq, hr: song.hr, pl: song.pl,
           };
         });
         currentNeteaseHasMore = neteaseRes.value.data.result.songs.length === ITEMS_PER_PAGE;
@@ -378,12 +405,39 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
             return {
               id: song.id, name: song.name,
               picUrl: song.al?.picUrl || song.album?.picUrl || song.al?.coverUrl || song.album?.coverUrl || '',
-              duration: song.dt || song.duration || 0, artists: artists,
-              album: { // 这里album是歌曲所属的专辑，与当前搜索的专辑对象区分
-                id: song.al?.id || song.album?.id || 0, name: song.al?.name || song.album?.name || '未知专辑',
+              duration: song.dt || song.duration || 0, 
+              ar: artists,
+              al: song.al,
+              album: {
+                id: song.al?.id || song.album?.id || 0,
+                name: song.al?.name || song.album?.name || '未知专辑',
                 picUrl: song.al?.picUrl || song.album?.picUrl || song.al?.coverUrl || song.album?.coverUrl || '',
+                type: song.al?.type || '未知类型',
+                size: song.al?.size || 0,
+                picId: song.al?.picId || 0,
+                blurPicUrl: song.al?.blurPicUrl || song.al?.picUrl || '',
+                companyId: song.al?.companyId || 0,
+                pic: song.al?.pic || 0,
+                publishTime: song.al?.publishTime || 0,
+                description: song.al?.description || '',
+                tags: song.al?.tags || '',
+                company: song.al?.company || '',
+                briefDesc: song.al?.briefDesc || '',
+                artist: song.al?.artist || ({} as Artist),
+                songs: song.al?.songs || [],
+                alias: song.al?.alias || [],
+                status: song.al?.status || 0,
+                copyrightId: song.al?.copyrightId || 0,
+                commentThreadId: song.al?.commentThreadId || '',
+                artists: song.al?.artists || [],
+                subType: song.al?.subType || '',
+                transName: song.al?.transName || '',
+                onSale: song.al?.onSale || false,
+                mark: song.al?.mark || 0,
+                picId_str: song.al?.picId_str || ''
               },
-              source: 'netease', type: 'music', privilege: song.privilege, fee: song.fee, sq: song.sq, hr: song.hr, pl: song.pl
+              source: 'netease', type: SEARCH_TYPE.MUSIC, 
+              privilege: song.privilege, fee: song.fee, sq: song.sq, hr: song.hr, pl: song.pl,
             };
           });
         }

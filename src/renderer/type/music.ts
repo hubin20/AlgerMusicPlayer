@@ -27,7 +27,7 @@ export interface SongResult {
   artists?: Artist[];
   al: Album;
   album?: Album;
-  count: number;
+  count?: number;
   playMusicUrl?: string;
   playLoading?: boolean;
   lyric?: ILyric;
@@ -45,6 +45,11 @@ export interface SongResult {
   // 时长
   duration?: number;
   dt?: number;
+  privilege?: Privilege;
+  fee?: number;
+  sq?: any;
+  hr?: any;
+  pl?: any;
 }
 
 export interface Song {

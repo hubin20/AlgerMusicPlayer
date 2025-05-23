@@ -1413,6 +1413,24 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
+  // 新增：将多首歌曲添加到当前播放列表的末尾
+  const addSongsToPlaylist = (songsToAdd: SongResult[]) => {
+    if (!Array.isArray(songsToAdd) || songsToAdd.length === 0) {
+      return;
+    }
+    const currentList = playList.value ? [...playList.value] : [];
+    // 避免重复添加，基于歌曲ID检查
+    const newSongs = songsToAdd.filter(newSong =>
+      !currentList.some(existingSong => existingSong.id === newSong.id)
+    );
+    playList.value = [...currentList, ...newSongs];
+    // 如果当前没有播放任何歌曲，并且播放列表之前为空，可以考虑自动播放新添加的第一首歌曲
+    if (!playMusic.value && currentList.length === 0 && newSongs.length > 0) {
+      setPlay(newSongs[0]);
+    }
+    message.success(i18n.global.t('player.message.addedToPlaylist', { count: newSongs.length }));
+  };
+
   return {
     play,
     isPlay,
@@ -1463,7 +1481,8 @@ export const usePlayerStore = defineStore('player', () => {
     setPlayListDrawerVisible,
     handlePause,
     playbackRate,
-    setPlaybackRate
+    setPlaybackRate,
+    addSongsToPlaylist
   };
 });
 
