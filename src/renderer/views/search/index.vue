@@ -454,55 +454,58 @@ watch(
 watch(
   () => route.query,
   (newQuery, oldQuery) => {
-    console.log('[Watch route.query] Triggered'); // 日志1：确认侦听器被触发
-    console.log('[Watch route.query] route.name:', route.name); // 日志2：当前路由名称
-    console.log('[Watch route.query] newQuery:', JSON.parse(JSON.stringify(newQuery))); // 日志3：新的路由参数
-    console.log('[Watch route.query] oldQuery:', oldQuery ? JSON.parse(JSON.stringify(oldQuery)) : undefined); // 日志4：旧的路由参数
+    console.log('[Watch route.query] Triggered');
+    console.log('[Watch route.query] route.name:', route.name);
+    console.log('[Watch route.query] newQuery:', JSON.parse(JSON.stringify(newQuery)));
+    console.log('[Watch route.query] oldQuery:', oldQuery ? JSON.parse(JSON.stringify(oldQuery)) : undefined);
 
     const isFirstRun = oldQuery === undefined;
-    console.log('[Watch route.query] isFirstRun:', isFirstRun); // 日志5：是否首次运行
+    console.log('[Watch route.query] isFirstRun:', isFirstRun);
 
     const currentKeyword = newQuery.keyword as string;
-    console.log('[Watch route.query] currentKeyword:', currentKeyword); // 日志6：解析出的关键词
+    console.log('[Watch route.query] currentKeyword:', currentKeyword);
 
     const currentTypeFromStore = searchStore.searchType;
     const currentTypeFromQuery = newQuery.type ? Number(newQuery.type) : null;
     const currentType = currentTypeFromQuery !== null ? currentTypeFromQuery : (currentTypeFromStore || SEARCH_TYPE.MUSIC);
-    console.log('[Watch route.query] currentType (fromQuery, fromStore, final):', currentTypeFromQuery, currentTypeFromStore, currentType); // 日志7：解析出的类型
+    console.log('[Watch route.query] currentType (fromQuery, fromStore, final):', currentTypeFromQuery, currentTypeFromStore, currentType);
 
-    if (route.name === 'Search') {
-      console.log('[Watch route.query] Inside route.name === \'Search\' block'); // 日志8
+    // 对于首次运行 (immediate: true)，如果URL中有keyword，则直接尝试加载，
+    // 因为此时 route.name 可能尚未更新为 'Search'。
+    // 对于非首次运行，则需要确保在 'Search' 路由上。
+    if ((isFirstRun && currentKeyword) || (route.name === 'Search')) {
+      console.log('[Watch route.query] Condition met: (isFirstRun && currentKeyword) || (route.name === \'Search\')');
       if (currentKeyword) {
-        console.log('[Watch route.query] Inside currentKeyword block, about to update store and potentially call loadSearch'); // 日志9
+        console.log('[Watch route.query] Inside currentKeyword block, about to update store and potentially call loadSearch');
         searchStore.searchValue = currentKeyword;
         searchStore.searchType = currentType;
 
         if (isFirstRun) {
-          console.log('[Watch route.query] isFirstRun is true, calling loadSearch...'); // 日志10
+          console.log('[Watch route.query] isFirstRun is true (and has keyword), calling loadSearch...');
           loadSearch(currentKeyword, currentType, false);
-        } else {
-          console.log('[Watch route.query] isFirstRun is false, checking if keyword/type changed...'); // 日志11
+        } else { // 非首次运行，此时必然 route.name === 'Search'
+          console.log('[Watch route.query] Not isFirstRun (but on Search route with keyword), checking if keyword/type changed...');
           const keywordActuallyChanged = currentKeyword !== (oldQuery.keyword as string);
           const oldTypeFromQuery = oldQuery?.type ? Number(oldQuery.type) : (searchStore.searchType || SEARCH_TYPE.MUSIC);
           const typeActuallyChanged = currentType !== oldTypeFromQuery;
-          console.log('[Watch route.query] keywordActuallyChanged:', keywordActuallyChanged, 'typeActuallyChanged:', typeActuallyChanged); // 日志12
+          console.log('[Watch route.query] keywordActuallyChanged:', keywordActuallyChanged, 'typeActuallyChanged:', typeActuallyChanged);
 
           if (keywordActuallyChanged || typeActuallyChanged) {
-            console.log('[Watch route.query] Keyword or type changed, calling loadSearch...'); // 日志13
+            console.log('[Watch route.query] Keyword or type changed, calling loadSearch...');
             loadSearch(currentKeyword, currentType, false);
           } else if (!searchDetail.value || Object.values(searchDetail.value).every(arr => arr.length === 0)) {
-            console.log('[Watch route.query] Data is empty, calling loadSearch (refresh/store issue fallback)...'); // 日志14
+            console.log('[Watch route.query] Data is empty, calling loadSearch (refresh/store issue fallback)...');
             loadSearch(currentKeyword, currentType, false);
           }
         }
-      } else {
-        console.log('[Watch route.query] No currentKeyword, resetting searchDetail.'); // 日志15
+      } else { // currentKeyword 为空 (通常意味着在 Search 路由但清空了搜索词)
+        console.log('[Watch route.query] No currentKeyword (but on Search route or first run with no keyword from URL), resetting searchDetail.');
         searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
         hotKeyword.value = t('search.title.searchList');
         searchStore.searchValue = '';
       }
     } else {
-      console.log('[Watch route.query] Not on Search route, or other condition not met.'); // 日志16
+      console.log('[Watch route.query] Conditions not met for search logic execution.');
     }
   },
   { immediate: true, deep: true }
