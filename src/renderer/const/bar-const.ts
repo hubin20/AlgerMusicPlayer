@@ -66,6 +66,7 @@ export const SEARCH_TYPES = [
   //   label: '综合',
   //   key: 1018,
   // },
+
 ];
 
 export const SEARCH_TYPE = {
