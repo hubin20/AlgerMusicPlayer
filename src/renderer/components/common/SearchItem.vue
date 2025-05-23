@@ -1,6 +1,14 @@
 <template>
-  <div class="search-item" :class="[shape, item.type]" @click="handleClick">
-    <div class="search-item-img">
+  <div
+    class="search-item"
+    :class="[
+      shape,
+      item.type,
+      { 'recommend-item': shape === 'square' && item.type === 'playlist' }
+    ]"
+    @click="handleClick"
+  >
+    <div :class="{ 'recommend-item-img': shape === 'square' && item.type === 'playlist', 'search-item-img': !(shape === 'square' && item.type === 'playlist') }">
       <n-image
         class="w-full h-full"
         :src="getImgUrl(item.picUrl, item.type === 'mv' ? '320y180' : '200y200')"
@@ -10,10 +18,14 @@
       <div v-if="item.type === 'mv'" class="play">
         <i class="iconfont icon icon-play"></i>
       </div>
+      <div v-if="shape === 'square' && item.type === 'playlist' && item.playCount" class="top">
+        <div class="play-count">{{ formatNumber(item.playCount) }}</div>
+        <i class="iconfont icon-videofill"></i>
+      </div>
     </div>
-    <div class="search-item-info">
-      <p class="search-item-name">{{ item.name }}</p>
-      <p class="search-item-artist">{{ item.desc }}</p>
+    <div :class="{ 'recommend-item-title': shape === 'square' && item.type === 'playlist', 'search-item-info': !(shape === 'square' && item.type === 'playlist') }">
+      <p :class="{ 'truncate': shape === 'square' && item.type === 'playlist', 'search-item-name': !(shape === 'square' && item.type === 'playlist') }">{{ item.name }}</p>
+      <p v-if="!(shape === 'square' && item.type === 'playlist')" class="search-item-artist">{{ item.desc }}</p>
     </div>
 
     <div v-if="item.type === '专辑'" class="search-item-size">
@@ -35,7 +47,7 @@ import { getAlbum, getListDetail } from '@/api/list';
 import MvPlayer from '@/components/MvPlayer.vue';
 import { usePlayerStore } from '@/store/modules/player';
 import { IMvItem } from '@/type/mv';
-import { getImgUrl } from '@/utils';
+import { getImgUrl, formatNumber } from '@/utils';
 import { useRouter } from 'vue-router';
 import { useMusicStore } from '@/store/modules/music';
 
@@ -134,10 +146,40 @@ const handleShowMv = async () => {
 </script>
 
 <style scoped lang="scss">
-.search-item {
-  @apply rounded-lg p-0 flex items-center hover:bg-transparent transition cursor-pointer border-none;
+.recommend-item {
+  @apply flex flex-col cursor-pointer;
 
-  &.square {
+  &-img {
+    @apply rounded-xl overflow-hidden relative w-full aspect-square mb-2;
+
+    img {
+      @apply absolute top-0 left-0 w-full h-full object-cover rounded-xl transition-transform duration-500;
+    }
+    
+    .top {
+      @apply absolute top-1 right-1 flex items-center px-2 py-1 rounded-full bg-black/30 text-white text-xs backdrop-blur-sm;
+      .play-count {
+        @apply mr-1;
+      }
+      .iconfont {
+        @apply text-xs;
+      }
+    }
+  }
+  &-title {
+    @apply mt-0 text-sm text-center text-gray-700 dark:text-gray-300 truncate w-full;
+     p {
+        @apply truncate font-normal;
+     }
+  }
+}
+
+.search-item {
+  &:not(.playlist.square) {
+     @apply rounded-lg p-0 flex items-center hover:bg-transparent transition cursor-pointer border-none;
+  }
+
+  &.square:not(.playlist) {
     @apply flex-col relative;
 
     .search-item-img {
@@ -174,12 +216,14 @@ const handleShowMv = async () => {
     }
   }
 
-  .search-item-info {
+  .search-item-info:not(.recommend-item-title) {
     @apply flex-1 overflow-hidden;
-    &-name {
-      @apply text-white text-sm text-center;
+    .search-item-name {
+      &:not(.truncate) {
+        @apply text-white text-sm text-center; 
+      }
     }
-    &-artist {
+    .search-item-artist {
       @apply text-gray-400 text-xs text-center;
     }
   }
