@@ -237,14 +237,7 @@ onMounted(() => {
 const hotKeyword = ref(route.query.keyword || t('search.title.searchList'));
 
 const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) => {
-  if (!keywords || String(keywords).trim() === '') {
-    console.warn('[Search] loadSearch called with empty or invalid keywords.');
-    if (!isLoadMore) { 
-       searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
-       hotKeyword.value = t('search.title.searchList'); 
-    }
-    return;
-  }
+  if (!keywords) return;
 
   const searchTypeToUse = type !== null ? type : searchType.value;
 
@@ -553,57 +546,27 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
 };
 
 watch(
-  () => route.query,
-  (newQuery, oldQuery) => { 
-    if (route.name === 'Search') {
-      const newKeyword = newQuery.keyword as string | undefined;
-      const newType = newQuery.type ? Number(newQuery.type) : undefined;
-
-      // No need for oldKeyword/oldType comparison if we directly set store
-      // and let store watchers handle the logic.
-
-      if (newKeyword !== undefined && newKeyword !== searchStore.searchValue) {
-        searchStore.searchValue = newKeyword; 
-      } else if (newKeyword === undefined && searchStore.searchValue) {
-        // Route keyword removed, clear store and results
-        searchStore.searchValue = ''; 
-        // searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
-        // hotKeyword.value = t('search.title.searchList');
-        // Clearing of searchDetail will be handled by the searchValue watcher
-      }
-      
-      if (newType !== undefined && newType !== searchStore.searchType) {
-        searchStore.searchType = newType; 
-      }
-    }
-  },
-  { immediate: true, deep: true } 
-);
-
-watch(
   () => searchStore.searchValue,
   (value) => {
-    if (route.name === 'Search') { 
-      if (value && String(value).trim() !== '') {
-        // Ensure searchType is also current from the store
-        loadSearch(value, searchStore.searchType, false);
-      } else {
-        searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
-        hotKeyword.value = t('search.title.searchList');
-      }
-    }
+    if (value) loadSearch(value, searchStore.searchType, false);
   }
 );
 
 watch(
-  () => searchType.value, 
-  (newType, oldType) => {
-    // searchType.value is computed from searchStore.searchType
-    if (route.name === 'Search' && searchStore.searchValue && String(searchStore.searchValue).trim() !== '' && newType !== oldType) {
+  () => searchType.value,
+  (newType) => {
+    if (searchStore.searchValue) {
       loadSearch(searchStore.searchValue, newType, false);
     }
   }
 );
+
+if (route.query.keyword && route.name === 'Search') {
+  const typeFromQuery = route.query.type ? Number(route.query.type) : searchStore.searchType;
+  loadSearch(route.query.keyword as string, typeFromQuery, false);
+} else if (searchStore.searchValue && route.name === 'Search') {
+    loadSearch(searchStore.searchValue, searchStore.searchType, false);
+}
 
 const handleScroll = (e: any) => {
   const { scrollTop, scrollHeight, clientHeight } = e.target;
@@ -611,6 +574,21 @@ const handleScroll = (e: any) => {
     loadSearch(currentKeyword.value, searchType.value, true);
   }
 };
+
+watch(
+  () => route.query,
+  (newQuery) => {
+    if (newQuery.keyword && route.name === 'Search') {
+      const typeFromQuery = newQuery.type ? Number(newQuery.type) : searchStore.searchType;
+      searchStore.searchType = typeFromQuery;
+      searchStore.searchValue = newQuery.keyword as string;
+    } else if (route.name === 'Search' && !newQuery.keyword) {
+      searchDetail.value = { songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] };
+      hotKeyword.value = t('search.title.searchList');
+    }
+  },
+  { immediate: true, deep: true }
+);
 
 const handlePlay = (item: SongResult) => {
   playerStore.addToNextPlay(item);
