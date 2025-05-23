@@ -38,12 +38,8 @@ request.interceptors.request.use(
       config.retryCount = 0;
     }
 
-    // 添加调试日志
-    console.log(`[API请求] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, {
-      params: config.params,
-      data: config.data,
-      retryCount: config.retryCount
-    });
+    // 添加调试日志，但减少日志内容避免跨域问题
+    console.log(`[API请求] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
 
     // 在请求发送之前做一些处理
     // 在get请求params中添加timestamp
@@ -51,6 +47,13 @@ request.interceptors.request.use(
       ...config.params,
       timestamp: Date.now()
     };
+
+    // 移除可能导致CORS问题的请求头
+    if (config.headers) {
+      delete config.headers['Pragma'];
+      delete config.headers['Cache-Control'];
+    }
+
     const token = localStorage.getItem('token');
     if (token && config.method !== 'post') {
       config.params.cookie = config.params.cookie !== undefined ? config.params.cookie : token;
@@ -84,11 +87,9 @@ const NO_RETRY_URLS = ['暂时没有'];
 // 响应拦截器
 request.interceptors.response.use(
   (response) => {
-    // 添加调试日志
+    // 添加调试日志，但减少日志内容避免跨域问题
     console.log(`[API响应] ${response.config.method?.toUpperCase()} ${response.config.url}`, {
-      status: response.status,
-      statusText: response.statusText,
-      dataPreview: response.data ? (typeof response.data === 'object' ? '对象数据' : '非对象数据') : '无数据'
+      status: response.status
     });
     return response;
   },

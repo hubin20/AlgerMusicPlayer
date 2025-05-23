@@ -31,11 +31,11 @@ export const getSearch = async (params: IParams) => {
       try {
         response = await request.get<any>('/cloudsearch', {
           params,
-          // 确保每次请求都有唯一的时间戳，避免缓存问题
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          }
+          // 移除导致CORS问题的自定义请求头
+          // headers: {
+          //   'Cache-Control': 'no-cache',
+          //   'Pragma': 'no-cache'
+          // }
         });
 
         // 检查响应数据是否有效
