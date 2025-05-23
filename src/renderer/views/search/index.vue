@@ -159,7 +159,7 @@ import { usePlayerStore } from '@/store/modules/player';
 import { useSearchStore } from '@/store/modules/search';
 import type { IHotSearch, AlbumItem, PlaylistItem, MvItem } from '@/type/search';
 import type { SongResult, Artist } from '@/type/music';
-import { isMobile, setAnimationClass, setAnimationDelay, formatNumber, formatDuring } from '@/utils';
+import { isMobile, setAnimationClass, setAnimationDelay, formatNumber, secondToMinute } from '@/utils';
 import { NSpin, NButton, NTag } from 'naive-ui';
 
 defineOptions({
@@ -337,19 +337,23 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
         }));
         currentNeteaseHasMore = neteaseResult.playlists.length === ITEMS_PER_PAGE;
       } else if (searchTypeToUse === SEARCH_TYPE.MV && neteaseResult.mvs) {
-        neteaseMvs = neteaseResult.mvs.map((mv: any): MvItem => ({
-          id: mv.id,
-          name: mv.name,
-          cover: mv.cover,
-          picUrl: mv.cover, // 确保 SearchItem 能获取到封面
-          artistName: mv.artistName,
-          artists: mv.artists,
-          playCount: mv.playCount,
-          duration: mv.duration,
-          type: 'mv', // 类型为MV
-          desc: `${mv.artistName || '未知艺人'} · ${formatDuring(mv.duration,'second')}`,
-          source: 'netease'
-        }));
+        neteaseMvs = neteaseResult.mvs.map((mv: any): MvItem => {
+          console.log('MV duration original value:', mv.duration); // 临时打印 duration
+          const durationInSeconds = Math.round(mv.duration / 1000); // 假设是毫秒，转为秒
+          return {
+            id: mv.id,
+            name: mv.name,
+            cover: mv.cover,
+            picUrl: mv.cover, // 确保 SearchItem 能获取到封面
+            artistName: mv.artistName,
+            artists: mv.artists,
+            playCount: mv.playCount,
+            duration: mv.duration, // 原始的 duration，单位待确认
+            type: 'mv', // 类型为MV
+            desc: `${mv.artistName || '未知艺人'} · ${secondToMinute(durationInSeconds)}`, // 使用 secondToMinute
+            source: 'netease'
+          };
+        });
         currentNeteaseHasMore = neteaseResult.mvs.length === ITEMS_PER_PAGE;
       } else if (neteaseResult.songs && searchTypeToUse !== SEARCH_TYPE.MUSIC) {
         neteaseSongs = neteaseResult.songs.map((song: any): SongResult => {
