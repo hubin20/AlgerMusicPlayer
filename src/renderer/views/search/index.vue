@@ -363,7 +363,7 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
               onSale: album.onSale,
               isSub: album.isSub,
               source: 'netease',
-              type: 'album',
+              type: '专辑',
               desc: album.artist?.name || album.name || t('search.unknownAlbumDesc')
             }));
             currentNeteaseHasMore = neteaseResult.albums.length === ITEMS_PER_PAGE;
@@ -481,7 +481,18 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
     if (isLoadMore) {
       if (searchDetail.value) { // Add null check
         if (searchTypeToUse === SEARCH_TYPE.MUSIC) {
-          searchDetail.value.songs = [...searchDetail.value.songs, ...neteaseSongs, ...kwSongsResult].sort((_a, _b) => 0);
+          const combinedSongs = [...searchDetail.value.songs, ...neteaseSongs, ...kwSongsResult];
+          combinedSongs.sort((a, b) => {
+            const aIsNetease = a.source === 'netease';
+            const bIsNetease = b.source === 'netease';
+            if (aIsNetease && !bIsNetease) {
+              return 1; // 网易云歌曲排在后面
+            } else if (!aIsNetease && bIsNetease) {
+              return -1; // 其他来源歌曲排在前面
+            }
+            return 0; // 同来源或都是其他来源，保持原始相对顺序（或后续可添加其他排序规则）
+          });
+          searchDetail.value.songs = combinedSongs;
         } else {
           searchDetail.value.albums = [...searchDetail.value.albums, ...neteaseAlbums];
           searchDetail.value.playlists = [...searchDetail.value.playlists, ...neteasePlaylists];
@@ -498,7 +509,18 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
         songs: [], albums: [], playlists: [], mvs: [], kwSongs: [] // Initialize structure
       };
       if (searchTypeToUse === SEARCH_TYPE.MUSIC) {
-        searchDetail.value.songs = [...neteaseSongs, ...kwSongsResult].sort((_a, _b) => 0);
+        let combinedSongs = [...neteaseSongs, ...kwSongsResult];
+        combinedSongs.sort((a, b) => {
+          const aIsNetease = a.source === 'netease';
+          const bIsNetease = b.source === 'netease';
+          if (aIsNetease && !bIsNetease) {
+            return 1; // 网易云歌曲排在后面
+          } else if (!aIsNetease && bIsNetease) {
+            return -1; // 其他来源歌曲排在前面
+          }
+          return 0; // 同来源或都是其他来源，保持原始相对顺序
+        });
+        searchDetail.value.songs = combinedSongs;
         searchDetail.value.kwSongs = []; // kwSongs are part of songs for MUSIC type
       } else {
         searchDetail.value.albums = neteaseAlbums;

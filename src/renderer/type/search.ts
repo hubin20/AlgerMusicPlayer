@@ -677,7 +677,7 @@ export interface AlbumItem {
   company?: string; //发行公司
   description?: string; // API 字段
   tags?: string; // API 字段
-  type?: 'album'; // 用于区分项目类型
+  type?: '专辑'; // 修改为中文，与 SearchItem.vue 中的判断一致
   source?: 'netease' | 'kw' | 'other';
   desc?: string; // 描述字段，用于 SearchItem
   // 根据API截图增加的字段
