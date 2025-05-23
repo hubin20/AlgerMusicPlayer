@@ -8,27 +8,29 @@
     ]"
     @click="handleClick"
   >
-    <div :class="{ 'recommend-item-img': shape === 'square' && item.type === 'playlist', 'search-item-img': !(shape === 'square' && item.type === 'playlist') }">
+    <div :class="{ 'recommend-item-img': shape === 'square' && (item.type === 'playlist' || item.type === 'album' || item.type === 'mv'), 'search-item-img': !(shape === 'square' && (item.type === 'playlist' || item.type === 'album' || item.type === 'mv' )) }">
       <n-image
         class="w-full h-full"
-        :src="getImgUrl(item.picUrl, item.type === 'mv' ? '320y180' : '200y200')"
+        :src="getImgUrl(item.picUrl || item.cover, item.type === 'mv' ? '320y180' : '200y200')"
         lazy
         preview-disabled
       />
-      <div v-if="item.type === 'mv'" class="play">
+      <div v-if="item.type === 'mv' && shape !== 'square'" class="play">
         <i class="iconfont icon icon-play"></i>
       </div>
-      <div v-if="shape === 'square' && item.type === 'playlist' && item.playCount" class="top">
-        <div class="play-count">{{ formatNumber(item.playCount) }}</div>
+      <div v-if="shape === 'square' && (item.type === 'playlist' || item.type === 'album' || item.type === 'mv') && (item.playCount || item.size || item.trackCount)" class="top">
+        <div v-if="item.playCount" class="play-count">{{ formatNumber(item.playCount) }}</div>
+        <div v-else-if="item.size" class="play-count">{{ item.size }}首</div>
+        <div v-else-if="item.trackCount" class="play-count">{{ item.trackCount }}首</div>
         <i class="iconfont icon-videofill"></i>
       </div>
     </div>
-    <div :class="{ 'recommend-item-title': shape === 'square' && item.type === 'playlist', 'search-item-info': !(shape === 'square' && item.type === 'playlist') }">
-      <p :class="{ 'truncate': shape === 'square' && item.type === 'playlist', 'search-item-name': !(shape === 'square' && item.type === 'playlist') }">{{ item.name }}</p>
-      <p v-if="!(shape === 'square' && item.type === 'playlist')" class="search-item-artist">{{ item.desc }}</p>
+    <div :class="{ 'recommend-item-title': shape === 'square' && (item.type === 'playlist' || item.type === 'album' || item.type === 'mv'), 'search-item-info': !(shape === 'square' && (item.type === 'playlist' || item.type === 'album' || item.type === 'mv' )) }">
+      <p :class="{ 'truncate': shape === 'square' && (item.type === 'playlist' || item.type === 'album' || item.type === 'mv'), 'search-item-name': !(shape === 'square' && (item.type === 'playlist' || item.type === 'album' || item.type === 'mv' )) }">{{ item.name }}</p>
+      <p v-if="!(shape === 'square' && (item.type === 'playlist' || item.type === 'album' || item.type === 'mv'))" class="search-item-artist">{{ item.desc }}</p>
     </div>
 
-    <div v-if="item.type === 'album'" class="search-item-size">
+    <div v-if="item.type === 'album' && shape !== 'square'" class="search-item-size">
       <i class="ri-music-2-line"></i>
       <span>{{ item.size }}</span>
     </div>
@@ -56,10 +58,17 @@ const props = withDefaults(
     shape?: 'square' | 'rectangle';
     zIndex?: number;
     item: {
-      picUrl: string;
+      id: number | string;
       name: string;
-      desc: string;
-      type: string;
+      picUrl?: string;
+      cover?: string;
+      playCount?: number;
+      trackCount?: number;
+      size?: number;
+      artistName?: string;
+      artists?: any[];
+      type: 'playlist' | 'album' | 'mv' | 'music' | string;
+      desc?: string;
       [key: string]: any;
     };
   }>(),
@@ -88,33 +97,32 @@ const handleClick = async () => {
   listInfo.value = null;
   if (props.item.type === 'album') {
     const res = await getAlbum(props.item.id);
-    songList.value = res.data.songs.map((song: any) => {
-      song.al.picUrl = song.al.picUrl || props.item.picUrl;
-      return song;
-    });
-    listInfo.value = {
-      ...res.data.album,
-      creator: {
-        avatarUrl: res.data.album.artist.img1v1Url,
-        nickname: `${res.data.album.artist.name} - ${res.data.album.company}`
-      },
-      description: res.data.album.description
-    };
-    
-    // 保存数据到store
-    musicStore.setCurrentMusicList(
-      songList.value, 
-      props.item.name, 
-      listInfo.value, 
-      false
-    );
-    
-    // 使用路由跳转
-    router.push({
-      name: 'musicList',
-      params: { id: props.item.id },
-      query: { type: 'album' }
-    });
+    if (res.data && res.data.album && res.data.songs) {
+      const albumData = res.data.album;
+      const songList = res.data.songs.map((song: any) => ({
+        ...song,
+        al: {
+          id: albumData.id,
+          name: albumData.name,
+          picUrl: albumData.picUrl,
+        },
+        picUrl: song.al?.picUrl || albumData.picUrl,
+        artists: song.ar || song.artists,
+      }));
+
+      musicStore.setCurrentMusicList(
+        songList,
+        albumData.name,
+        { ...albumData, tracks: songList, trackIds: songList.map((s:any) => ({id: s.id})) },
+        false,
+        'album'
+      );
+      router.push({
+        name: 'musicList',
+        params: { id: props.item.id },
+        query: { type: 'album' }
+      });
+    }
   } else if (props.item.type === 'playlist') {
     const res = await getListDetail(props.item.id);
     songList.value = res.data.playlist.tracks;
