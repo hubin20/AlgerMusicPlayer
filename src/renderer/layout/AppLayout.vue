@@ -49,7 +49,7 @@
       <!-- 播放列表抽屉 -->
       <play-list-drawer />
     </div>
-    <install-app-modal v-if="!isElectron"></install-app-modal>
+    <!-- <install-app-modal v-if="!isElectron"></install-app-modal> -->
     <update-modal v-if="isElectron" />
     <playlist-drawer v-model="showPlaylistDrawer" :song-id="currentSongId" />
     <SleepTimerTop v-if="!isMobile"/>

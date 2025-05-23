@@ -495,39 +495,47 @@ const handlePrev = () => {
 
 const initVideo = async () => {
   if (props.currentMv && props.currentMv.id) {
-    try {
-      const loadingMessage = message.loading(t('mv.loading'), { duration: 0 });
+    if (playLoading.value) return;
 
+    if (activeLoadingMessage) {
+      activeLoadingMessage.destroy();
+      activeLoadingMessage = null;
+    }
+    activeLoadingMessage = message.loading(t('mv.loading'), { duration: 0 });
+    playLoading.value = true;
+
+    try {
       const mvId = typeof props.currentMv.id === 'string' ? parseInt(props.currentMv.id) : props.currentMv.id;
-      if (typeof mvId !== 'number') {
-        message.error(t('mv.loadFailed'));
-        if (loadingMessage && typeof (loadingMessage as any).destroy === 'function') {
-          (loadingMessage as any).destroy();
-        } else {
-          message.destroyAll();
-        }
-        return;
+      if (typeof mvId !== 'number' || isNaN(mvId)) {
+        message.error(t('mv.loadFailedInvalidId'));
+        throw new Error('Invalid MV ID');
       }
       const res = await getMvUrl(mvId as number);
       if (res.data.code === 200 && res.data.data.url) {
-        mvUrl.value = res.data.data.url;
+        mvUrl.value = res.data.data.url.replace(/^http:/, 'https:');
         autoPlayBlocked.value = false;
         isPlaying.value = false;
         currentTime.value = 0;
         progress.value = 0;
-        nextTick(() => {
-          if (videoRef.value) {
-            videoRef.value.load();
-          }
-        });
+        await nextTick();
+        if (videoRef.value) {
+          videoRef.value.load();
+        }
       } else {
         console.error('Failed to get MV URL:', res.data);
         mvUrl.value = '';
+        message.error(t('mv.loadFailed'));
       }
     } catch (error) {
-      console.error('Error fetching MV URL:', error);
+      console.error('Error fetching MV URL in initVideo:', error);
       mvUrl.value = '';
-      message.destroyAll();
+      message.error(t('mv.initFailed'));
+    } finally {
+      playLoading.value = false;
+      if (activeLoadingMessage) {
+        activeLoadingMessage.destroy();
+        activeLoadingMessage = null;
+      }
     }
   }
 };
