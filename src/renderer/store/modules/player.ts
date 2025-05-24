@@ -73,178 +73,149 @@ export const getSongUrl = async (
     const settingsStore = useSettingsStore();
     const unblockEnabled = settingsStore.setData.enableMusicUnblock === true;
 
-    let officialPotentiallyPlayableUrl: string | null = null;
-    let officialUrlForDownload: any = null;
+    let officialUrl: string | null = null;
+    let officialSongInfo: any = null; // Store the full song info from official API
 
-    // Helper to create a promise that rejects after a timeout, and returns a cancel function
-    const createTimeoutPromise = (timeoutMs: number, errorMessage: string): { promise: Promise<never>; cancel: () => void } => {
-      let timerId: NodeJS.Timeout | undefined;
-      const promise = new Promise<never>((_, reject) => {
-        timerId = setTimeout(() => {
-          console.warn(errorMessage);
-          reject(new Error(errorMessage));
-        }, timeoutMs);
-      });
-      const cancel = () => {
-        if (timerId) {
-          clearTimeout(timerId);
-          console.log(`[PlayerStore GetSongUrl] Timeout for '${errorMessage}' cancelled.`);
-        }
-      };
-      return { promise, cancel };
-    };
+    // --- Step 1: Try Official API First ---
+    console.log('[PlayerStore GetSongUrl] Netease: Step 1 - Attempting Official API (getMusicUrl)');
+    try {
+      // 注意：getMusicUrl 内部可能已有超时和重试，这里的 try-catch 主要处理其最终结果
+      const { data: neteaseApiData } = await getMusicUrl(numericId, isDownloaded);
+      if (neteaseApiData?.data?.[0]?.url) {
+        officialSongInfo = neteaseApiData.data[0];
+        officialUrl = officialSongInfo.url;
+        console.log('[PlayerStore GetSongUrl] Netease: Official API success. URL:', officialUrl, 'SongInfo:', JSON.stringify(officialSongInfo));
 
-    const contenders: Promise<string | { officialUrlNeedsParsing: string } | null>[] = [];
-    const cancelTimeouts: (() => void)[] = [];
+        // --- Refined check for VIP/Trial/Unavailable ---
+        let needsUnblock = false;
+        const song = officialSongInfo;
 
-    // 1. Official API Contender
-    const officialApiTimeout = createTimeoutPromise(7000, 'Official API request timed out');
-    cancelTimeouts.push(officialApiTimeout.cancel);
-
-    const officialPromise = new Promise<string | { officialUrlNeedsParsing: string } | null>((resolve, reject) => {
-      getMusicUrl(numericId, isDownloaded)
-        .then(({ data: neteaseApiData }) => {
-          if (neteaseApiData?.data?.[0]?.url) {
-            const songInfo = neteaseApiData.data[0];
-            // Ensure officialPotentiallyPlayableUrl is set as early as possible with the URL if available
-            officialPotentiallyPlayableUrl = songInfo.url;
-            if (isDownloaded) {
-              officialUrlForDownload = songInfo; // Store full info for download if applicable
-            }
-
-            if (songInfo.br === 0 || songInfo.freeTrialInfo || songInfo.level === 'exhigh' && !songInfo.url?.includes('orf')) {
-              console.log('[PlayerStore GetSongUrl] Netease: Official URL from getMusicUrl is trial/vip, needs parsing. Preparing to reject for race.', songInfo.url);
-              const errorWithUrl = new Error('Official URL needs parsing');
-              (errorWithUrl as any).urlToParse = songInfo.url; // Attach URL to error
-              reject(errorWithUrl);
-            } else {
-              console.log('[PlayerStore GetSongUrl] Netease: Official URL from getMusicUrl is directly usable.', songInfo.url);
-              resolve(songInfo.url); // Directly usable URL
-            }
-          } else {
-            console.warn('[PlayerStore GetSongUrl] Netease: No URL in official API response data.');
-            reject(new Error('No URL in official API response'));
+        // 场景1: fee 为 1 (VIP歌曲) 或 4 (付费专辑)
+        if (song.fee === 1 || song.fee === 4) {
+          if (!song.freeTrialInfo && (!song.br || song.br <= 0)) {
+            // 没有试听信息，并且码率无效或为0 (表示无法直接播放)
+            needsUnblock = true;
+            console.log('[PlayerStore GetSongUrl] Netease: Marked for unblock (VIP/Purchased, no trial, invalid br). Info:', JSON.stringify({ fee: song.fee, br: song.br, freeTrialInfo: !!song.freeTrialInfo }));
+          } else if (song.freeTrialInfo) {
+            // 有试听信息，也认为需要解灰以获取完整版
+            needsUnblock = true;
+            console.log('[PlayerStore GetSongUrl] Netease: Official URL is trial. Marked for unblock. Info:", JSON.stringify({freeTrialInfo: song.freeTrialInfo}));
           }
-        })
-        .catch((error) => {
-          console.error('[PlayerStore GetSongUrl] Netease: getMusicUrl call failed or was rejected:', error);
-          reject(error); // Propagate the error
-        });
-    });
-
-    const officialContender = Promise.race([officialPromise, officialApiTimeout.promise])
-      .catch(error => {
-        console.log('[PlayerStore GetSongUrl] Netease: officialPromise (or its timeout) caught in race. Error:', error.message);
-        const urlToParseFromError = (error as any).urlToParse;
-        if (error.message === 'Official URL needs parsing' && urlToParseFromError) {
-          console.log('[PlayerStore GetSongUrl] Netease: officialContender resolved to {officialUrlNeedsParsing} with URL:', urlToParseFromError);
-          return { officialUrlNeedsParsing: urlToParseFromError };
+        } else if ((!song.br || song.br <= 0) && song.fee === 0 && !song.freeTrialInfo) {
+          // 免费歌曲 (fee=0)，但码率无效 (通常意味着灰色，无版权)
+          // 并且没有试听信息 (有些灰色曲目可能有试听片段，但我们目标是可播放的)
+          // (song.privileges?.pl > 0 && song.privileges?.playMaxbr === 0) // 另一个可能的判断条件
+          needsUnblock = true;
+          console.log('[PlayerStore GetSongUrl] Netease: Marked for unblock (Free song, but invalid br - likely grey/no copyright). Info:', JSON.stringify({ fee: song.fee, br: song.br }));
         }
-        // For other errors from officialPromise (e.g., "No URL in official API response", network errors) or officialApiTimeout,
-        // officialContender resolves to null.
-        console.log('[PlayerStore GetSongUrl] Netease: officialContender resolving to null due to error/timeout:', error.message);
-        return null;
-      });
-    contenders.push(officialContender);
+        // 更多精细化判断可以加入，比如基于 song.privileges 对象中的具体权限
 
-    // 2. Unblock Service Promise (only if enabled)
-    if (unblockEnabled) {
-      console.log('[PlayerStore GetSongUrl] Netease: Unblock enabled, attempting getParsingMusicUrl (unm.931125.xyz).');
-      const unblockServiceTimeout = createTimeoutPromise(7000, 'Unblock service request timed out');
-      cancelTimeouts.push(unblockServiceTimeout.cancel);
-
-      const unblockServiceActualPromise = new Promise<string | null>((resolve) => {
-        // 构造一个临时的 SongResult 对象传递给 getParsingMusicUrl
-        const tempDataForParsing: Pick<SongResult, 'id' | 'name' | 'source'> = {
-          id: numericId,
-          name: songData.name || '未知歌曲',
-          source: 'netease' // 或 songData.source 如果确定是网易云
-        };
-        getParsingMusicUrl(numericId, tempDataForParsing as SongResult) // 传递构造的对象
-          .then((unblockData) => {
-            if (unblockData && unblockData.url) {
-              console.log('[PlayerStore GetSongUrl] Netease: URL from getParsingMusicUrl (unm.931125.xyz) is usable:', unblockData.url);
-              resolve(unblockData.url);
-            } else {
-              console.warn('[PlayerStore GetSongUrl] Netease: getParsingMusicUrl did not return a usable URL. Resolving to null.');
-              resolve(null);
-            }
-          })
-          .catch((error) => {
-            console.error('[PlayerStore GetSongUrl] Netease: getParsingMusicUrl call failed. Resolving to null:', error);
-            resolve(null);
-          });
-      });
-      const unblockContender = Promise.race([unblockServiceActualPromise, unblockServiceTimeout.promise])
-        .catch(error => {
-          console.log('[PlayerStore GetSongUrl] Netease: unblockContender (or its timeout) caught in race. Error:', error.message);
-          // unblockContender resolves to null on any error or timeout.
-          return null;
-        });
-      contenders.push(unblockContender);
-    } else {
-      console.log('[PlayerStore GetSongUrl] Netease: Unblock service is disabled.');
+        if (needsUnblock) {
+          console.log('[PlayerStore GetSongUrl] Netease: Official URL determined to need unblocking.');
+          if (unblockEnabled) {
+            console.log('[PlayerStore GetSongUrl] Netease: Proceeding to unblock service.');
+            // Fall through to unblock service section
+          } else {
+            console.log('[PlayerStore GetSongUrl] Netease: Unblock service disabled. Cannot play/unblock this song.');
+            // 如果下载，返回包含错误信息的对象；否则返回空，上层处理播放失败
+            // 可以考虑返回 officialUrl，让用户知道至少有个（可能无法播放的）链接
+            return isDownloaded ? { error: 'Song needs unblock, but service disabled', id: numericId, officialSongInfo } : (officialUrl || '');
+          }
+        } else {
+          // Official URL seems directly playable
+          console.log('[PlayerStore GetSongUrl] Netease: Official URL is directly usable:', officialUrl);
+          return isDownloaded ? (officialSongInfo || { url: officialUrl, id: numericId }) : officialUrl;
+        }
+      } else {
+        console.warn('[PlayerStore GetSongUrl] Netease: No URL in official API response data. Will try unblock if enabled.');
+        // Official API did not return a URL, proceed to unblock service if enabled
+        if (!unblockEnabled) {
+          return isDownloaded ? { error: 'No official URL and unblock disabled', id: numericId } : '';
+        }
+        // Fall through to unblock service section
+      }
+    } catch (error: any) {
+      console.error('[PlayerStore GetSongUrl] Netease: Official API (getMusicUrl) call failed:', error.message);
+      // Official API failed, proceed to unblock service if enabled
+      if (!unblockEnabled) {
+        return isDownloaded ? { error: 'Official API failed and unblock disabled', id: numericId, details: error.message } : '';
+      }
+      // Fall through to unblock service section (error implies officialUrl is null)
+      officialUrl = null; // Ensure officialUrl is null if API call failed
+      officialSongInfo = null;
     }
 
-    console.log(`[PlayerStore GetSongUrl] Netease: Starting Promise.race with ${contenders.length} contenders...`);
-    try {
-      const winnerResult = await Promise.race(contenders);
-      // Regardless of the race winner, all timeouts should be cancelled now.
-      cancelTimeouts.forEach(cancel => cancel());
-      console.log('[PlayerStore GetSongUrl] Netease: All timeouts cancellation attempted after main race.');
-      console.log('[PlayerStore GetSongUrl] Netease: Promise.race winner result (raw):', winnerResult);
+    // --- Step 2: Try Unblock Service (if official URL was not usable or official API failed, and unblock is enabled) ---
+    if (unblockEnabled) {
+      console.log('[PlayerStore GetSongUrl] Netease: Step 2 - Attempting Unblock Service (getParsingMusicUrl)');
+      try {
+        const createTimeoutPromise = (timeoutMs: number, errorMessage: string): { promise: Promise<never>; cancel: () => void } => {
+          let timerId: NodeJS.Timeout | undefined;
+          const promise = new Promise<never>((_, reject) => {
+            timerId = setTimeout(() => {
+              console.warn(`[PlayerStore GetSongUrl] Timeout: ${errorMessage}`);
+              reject(new Error(errorMessage));
+            }, timeoutMs);
+          });
+          const cancel = () => {
+            if (timerId) clearTimeout(timerId);
+          };
+          return { promise, cancel };
+        };
 
+        const unblockServiceTimeoutMs = 7000; // 7 seconds for unblock service
+        const unblockServiceTimeout = createTimeoutPromise(unblockServiceTimeoutMs, 'Unblock service request timed out');
 
-      if (typeof winnerResult === 'string' && winnerResult.startsWith('http')) {
-        console.log('[PlayerStore GetSongUrl] Netease: Race winner is a direct playable URL:', winnerResult);
-        return isDownloaded ? (officialUrlForDownload || { url: winnerResult, id: numericId }) : winnerResult;
-      } else if (winnerResult && typeof winnerResult === 'object' && 'officialUrlNeedsParsing' in winnerResult && typeof winnerResult.officialUrlNeedsParsing === 'string') {
-        console.log('[PlayerStore GetSongUrl] Netease: Race winner is official URL needing parsing:', winnerResult.officialUrlNeedsParsing);
-        // Ensure officialUrlForDownload is consistent if this path is taken for downloads
-        if (isDownloaded && !officialUrlForDownload && officialPotentiallyPlayableUrl === winnerResult.officialUrlNeedsParsing) {
-          // This implies officialUrlForDownload might not have been set if officialPromise didn't resolve with full songInfo
-          // For now, we assume officialPotentiallyPlayableUrl is the primary URL source here.
-        }
-        return isDownloaded ? (officialUrlForDownload || { url: winnerResult.officialUrlNeedsParsing, id: numericId }) : winnerResult.officialUrlNeedsParsing;
-      } else {
-        // WinnerResult is likely null (e.g., unblock was fastest and returned null, or official contender also resolved to null)
-        // We MUST now await the definitive result of officialContender if we haven't already used it.
-        console.log('[PlayerStore GetSongUrl] Netease: Race winner is null or not directly usable. Explicitly awaiting officialContender result.');
+        const unblockServiceActualPromise = getParsingMusicUrl(numericId, songData)
+          .then((unblockData) => {
+            unblockServiceTimeout.cancel();
+            if (unblockData && unblockData.url) {
+              console.log('[PlayerStore GetSongUrl] Netease: URL from getParsingMusicUrl is usable:', unblockData.url);
+              return isDownloaded ? { url: unblockData.url, id: numericId, source: 'unblocked' } : unblockData.url;
+            } else {
+              console.warn('[PlayerStore GetSongUrl] Netease: getParsingMusicUrl did not return a usable URL.');
+              return null;
+            }
+          })
+          .catch((error: any) => {
+            unblockServiceTimeout.cancel();
+            console.error('[PlayerStore GetSongUrl] Netease: getParsingMusicUrl call failed:', error.message);
+            return null;
+          });
 
-        // If winnerResult came from officialContender and was null, finalOfficialResult will also be null.
-        // If winnerResult came from unblockContender (being null), finalOfficialResult is the actual resolution of officialContender.
-        const finalOfficialResult = await officialContender; // This ensures we have the settled result of the official path
-        console.log('[PlayerStore GetSongUrl] Netease: Explicit officialContender final result:', finalOfficialResult);
+        const unblockedResult = await Promise.race([unblockServiceActualPromise, unblockServiceTimeout.promise])
+          .catch((raceError: any) => {
+            console.warn('[PlayerStore GetSongUrl] Netease: Unblock service Promise.race caught error (likely timeout):', raceError.message);
+            return null;
+          });
 
-        if (typeof finalOfficialResult === 'string' && finalOfficialResult.startsWith('http')) {
-          console.log('[PlayerStore GetSongUrl] Netease: Fallback to resolved officialContender (direct URL):', finalOfficialResult);
-          // Update officialUrlForDownload if necessary, though less likely if it didn't win the race
-          if (isDownloaded && !officialUrlForDownload && officialPotentiallyPlayableUrl === finalOfficialResult) {
-            // officialUrlForDownload = relevantSongInfo; // Needs more robust way to get full songInfo here
+        if (unblockedResult && (typeof unblockedResult === 'string' || (typeof unblockedResult === 'object' && unblockedResult.url))) {
+          return unblockedResult;
+        } else {
+          console.warn('[PlayerStore GetSongUrl] Netease: Unblock service also failed or timed out.');
+          if (officialUrl) { // Fallback to official URL if unblock failed but official one existed
+            console.warn(`[PlayerStore GetSongUrl] Netease: Unblock failed, falling back to (potentially non-playable) official URL: ${officialUrl}`);
+            return isDownloaded ? (officialSongInfo || { url: officialUrl, id: numericId, comment: "fallback_official_after_unblock_fail" }) : officialUrl;
           }
-          return isDownloaded ? (officialUrlForDownload || { url: finalOfficialResult, id: numericId }) : finalOfficialResult;
-        } else if (finalOfficialResult && typeof finalOfficialResult === 'object' && 'officialUrlNeedsParsing' in finalOfficialResult && typeof finalOfficialResult.officialUrlNeedsParsing === 'string') {
-          console.log('[PlayerStore GetSongUrl] Netease: Fallback to resolved officialContender (URL needing parsing):', finalOfficialResult.officialUrlNeedsParsing);
-          return isDownloaded ? (officialUrlForDownload || { url: finalOfficialResult.officialUrlNeedsParsing, id: numericId }) : finalOfficialResult.officialUrlNeedsParsing;
-        } else if (officialPotentiallyPlayableUrl) {
-          // This is a last-ditch effort if officialContender somehow resolved to null but officialPotentiallyPlayableUrl was set.
-          console.warn('[PlayerStore GetSongUrl] Netease: Official contender also null or invalid. Using last known officialPotentiallyPlayableUrl as final fallback:', officialPotentiallyPlayableUrl);
-          return isDownloaded ? (officialUrlForDownload || { url: officialPotentiallyPlayableUrl, id: numericId }) : officialPotentiallyPlayableUrl;
+          return isDownloaded ? { error: 'All attempts failed (official and unblock)', id: numericId, officialSongInfoIfAny: officialSongInfo } : '';
         }
-        else {
-          console.error('[PlayerStore GetSongUrl] Netease: All attempts failed. No usable URL from race, explicit official check, or fallback. officialPotentiallyPlayableUrl was:', officialPotentiallyPlayableUrl);
-          return isDownloaded ? { error: 'No playable URL found', id: numericId } : '';
+      } catch (error: any) {
+        console.error('[PlayerStore GetSongUrl] Netease: Error during unblock service attempt (outer try-catch):', error.message);
+        if (officialUrl) {
+          console.warn(`[PlayerStore GetSongUrl] Netease: Unblock attempt threw error, falling back to (potentially non-playable) official URL: ${officialUrl}`);
+          return isDownloaded ? (officialSongInfo || { url: officialUrl, id: numericId, comment: "fallback_official_after_unblock_exception" }) : officialUrl;
         }
+        return isDownloaded ? { error: 'Unblock service threw an unhandled error', id: numericId, details: error.message } : '';
       }
-    } catch (error) {
-      console.error('[PlayerStore GetSongUrl] Netease: Outer error during Promise.race/processing:', error);
-      cancelTimeouts.forEach(cancel => cancel()); // Ensure cleanup
-      console.log('[PlayerStore GetSongUrl] Netease: All timeouts cancellation attempted in outer catch block (after error).');
-      if (officialPotentiallyPlayableUrl) {
-        console.warn('[PlayerStore GetSongUrl] Netease: Outer catch, falling back to officialPotentiallyPlayableUrl due to error:', officialPotentiallyPlayableUrl);
-        return isDownloaded ? (officialUrlForDownload || { url: officialPotentiallyPlayableUrl, id: numericId }) : officialPotentiallyPlayableUrl;
+    } else {
+      // Unblock is disabled, and we reached here because official URL was not directly usable OR official API failed.
+      console.warn('[PlayerStore GetSongUrl] Netease: Official URL not usable (or API failed) and unblock service is disabled.');
+      if (officialUrl) { // If we had an official URL (even if deemed non-playable initially)
+        console.warn(`[PlayerStore GetSongUrl] Netease: Unblock disabled, returning the (potentially non-playable) official URL: ${officialUrl}`);
+        return isDownloaded ? (officialSongInfo || { url: officialUrl, id: numericId, comment: "direct_official_unblock_disabled_deemed_nonplayable" }) : officialUrl;
       }
-      return isDownloaded ? { error: 'Failed to get URL due to outer error', id: numericId } : '';
+      // If officialUrl was null (API failed) and unblock disabled, then it's a definitive failure.
+      return isDownloaded ? { error: 'No playable URL found, official API failed or returned unusable, and unblock disabled', id: numericId, officialSongInfoIfAny: officialSongInfo } : '';
     }
   }
 
