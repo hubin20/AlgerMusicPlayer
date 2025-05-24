@@ -627,14 +627,34 @@ export const usePlayerStore = defineStore('player', () => {
       }
       // ---- END: Check for stale update ----
 
-      // 如果检查通过，说明当前 playMusic.value.id 仍然是 originalMusic.id，可以安全更新
-      playMusic.value = updatedPlayMusic;
-      playMusicUrl.value = updatedPlayMusic.playMusicUrl as string;
+      if (updatedPlayMusic.playMusicUrl && typeof updatedPlayMusic.playMusicUrl === 'string') {
+        playMusic.value = updatedPlayMusic;
+        playMusicUrl.value = updatedPlayMusic.playMusicUrl;
+        localStorage.setItem('currentPlayMusic', JSON.stringify(playMusic.value));
+        localStorage.setItem('currentPlayMusicUrl', playMusicUrl.value);
+        localStorage.setItem('isPlaying', play.value.toString());
+      } else {
+        // 获取 URL 失败
+        console.error(`[PlayerStore handlePlayMusic] Failed to get valid URL for ${originalMusic.name} (ID: ${originalMusic.id}). Original songData URL was: ${originalMusic.playMusicUrl}, New attempt result from getSongDetail: ${updatedPlayMusic.playMusicUrl}`);
+        playMusic.value.playLoading = false; // 清除原始歌曲的加载状态，因为它不会被播放
 
-      // 保存到本地存储
-      localStorage.setItem('currentPlayMusic', JSON.stringify(playMusic.value));
-      localStorage.setItem('currentPlayMusicUrl', playMusicUrl.value);
-      localStorage.setItem('isPlaying', play.value.toString());
+        // 清理播放列表中的无效URL，确保下次不会直接使用它
+        const songInPlaylistIndex = playList.value.findIndex(item => item.id === originalMusic.id && item.source === originalMusic.source);
+        if (songInPlaylistIndex !== -1) {
+          const songToUpdateInList = { ...playList.value[songInPlaylistIndex] };
+          delete songToUpdateInList.playMusicUrl; // 关键：清除URL
+          delete songToUpdateInList.expiredAt;   // 清除过期时间
+          // 可以考虑添加一个标记，如 lastAttemptFailed: true
+          playList.value.splice(songInPlaylistIndex, 1, songToUpdateInList);
+          console.log(`[PlayerStore handlePlayMusic] Cleared playMusicUrl for ${originalMusic.name} (ID: ${originalMusic.id}) in playList due to fetch failure.`);
+          localStorage.setItem('playList', JSON.stringify(playList.value));
+        }
+
+        message.error(i18n.global.t('player.playFailed'));
+        // 触发播放下一首的逻辑。nextPlay 内部应有能力处理连续失败的情况。
+        setTimeout(() => nextPlay(), 100);
+        return false; // 表示播放失败
+      }
 
       // 无论如何都预加载更多歌曲
       if (songIndex !== -1) {
