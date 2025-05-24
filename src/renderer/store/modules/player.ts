@@ -88,7 +88,7 @@ export const getSongUrl = async (
         // 尝试将 HTTP URL 升级到 HTTPS
         if (officialUrl && officialUrl.startsWith('http://')) {
           const httpsUrl = officialUrl.replace('http://', 'https://');
-          console.log(`[PlayerStore GetSongUrl] Netease: Official URL was HTTP, upgraded to HTTPS for trial: ${httpsUrl}`);
+          console.log(`[PlayerStore GetSongUrl] Netease: Official URL was HTTP, upgraded to HTTPS for trial: ${httpsualUrl}`);
           officialUrl = httpsUrl;
           officialSongInfo.url = httpsUrl; //确保后续使用的 song 对象中的 url 也是最新的
         }
