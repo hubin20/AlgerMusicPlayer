@@ -25,6 +25,7 @@ const icon = nativeImage.createFromPath(
 );
 
 let mainWindow: Electron.BrowserWindow;
+let isQuitting = false;
 
 // 初始化应用
 function initialize() {
@@ -46,6 +47,14 @@ function initialize() {
 
   // 创建主窗口
   mainWindow = createMainWindow(icon);
+
+  // 为主窗口添加 close 事件处理
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
 
   // 初始化托盘
   initializeTray(iconPath, mainWindow);
@@ -136,8 +145,18 @@ if (!isSingleInstance) {
   // 所有窗口关闭时的处理
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
+      // 如果希望点击关闭按钮后，非isQuitting状态下不退出，则此处的app.quit()也应受isQuitting控制
+      // 但由于主窗口的关闭已被拦截，此事件可能不会轻易触发导致退出
+      // 如果确实需要，可以改为 if (!isQuitting) app.quit(); 或者完全移除/注释掉这一段以依赖托盘退出
+      // 为确保后台运行，我们暂时不修改此处的原有逻辑，因为主窗口隐藏不会触发此事件。
+      // 如果后续发现此逻辑干扰了后台运行，可以再调整。
       app.quit();
     }
+  });
+
+  // 在应用退出前设置标志
+  app.on('before-quit', () => {
+    isQuitting = true;
   });
 
   // 重启应用

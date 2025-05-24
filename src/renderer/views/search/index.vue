@@ -49,12 +49,12 @@
           <!-- 优先显示网易云精确匹配类型的结果 -->
           <template v-if="searchType === SEARCH_TYPE.ALBUM && searchDetail.albums?.length">
             <div class="search-playlist-grid">
-              <div
-                v-for="(albumItem, index) in searchDetail.albums"
+            <div
+              v-for="(albumItem, index) in searchDetail.albums"
                 :key="albumItem.id || index" 
-                :class="setAnimationClass('animate__bounceInRight')" :style="getSearchListAnimation(index)"
-              >
-                <search-item :item="albumItem as any" shape="square" /> 
+              :class="setAnimationClass('animate__bounceInRight')" :style="getSearchListAnimation(index)"
+            >
+              <search-item :item="albumItem as any" shape="square" /> 
               </div>
             </div>
           </template>
@@ -71,11 +71,11 @@
           </template>
           <template v-else-if="searchType === SEARCH_TYPE.MV && searchDetail.mvs?.length">
             <div class="search-playlist-grid">
-              <div
-                v-for="(mvItem, index) in searchDetail.mvs"
+            <div
+              v-for="(mvItem, index) in searchDetail.mvs"
                 :key="mvItem.id || index" 
-                :class="setAnimationClass('animate__bounceInRight')" :style="getSearchListAnimation(index)"
-              >
+              :class="setAnimationClass('animate__bounceInRight')" :style="getSearchListAnimation(index)"
+            >
                 <search-item :item="mvItem as any" shape="square" />
               </div>
             </div>
@@ -278,7 +278,7 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
             duration: song.dt || song.duration || 0, 
             ar: artists,
             al: song.al,
-            album: {
+            album: { 
               id: song.al?.id || song.album?.id || 0,
               name: song.al?.name || song.album?.name || '未知专辑',
               picUrl: song.al?.picUrl || song.album?.picUrl || song.al?.coverUrl || song.album?.coverUrl || '',
@@ -396,19 +396,19 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
         // 处理专辑搜索时API可能附带的歌曲
         if (neteaseRes.data.result.songs) {
           songsFromAlbum = neteaseRes.data.result.songs.map((song: any): SongResult => {
-            const artists = (song.ar || song.artists || []).map((a: any): Artist => ({
-              id: a.id || 0, name: a.name || '未知歌手', picId: a.picId || 0, img1v1Id: a.img1v1Id || 0,
-              briefDesc: a.briefDesc || '', picUrl: a.picUrl || '', img1v1Url: a.img1v1Url || '',
-              albumSize: a.albumSize || 0, alias: a.alias || [], trans: a.trans || '',
-              musicSize: a.musicSize || 0, topicPerson: a.topicPerson || 0,
-            }));
-            return {
+          const artists = (song.ar || song.artists || []).map((a: any): Artist => ({
+            id: a.id || 0, name: a.name || '未知歌手', picId: a.picId || 0, img1v1Id: a.img1v1Id || 0,
+            briefDesc: a.briefDesc || '', picUrl: a.picUrl || '', img1v1Url: a.img1v1Url || '',
+            albumSize: a.albumSize || 0, alias: a.alias || [], trans: a.trans || '',
+            musicSize: a.musicSize || 0, topicPerson: a.topicPerson || 0,
+          }));
+          return {
               id: song.id, name: song.name,
               picUrl: song.al?.picUrl || song.album?.picUrl || song.al?.coverUrl || song.album?.coverUrl || '',
               duration: song.dt || song.duration || 0, 
               ar: artists,
               al: song.al,
-              album: {
+            album: { 
                 id: song.al?.id || song.album?.id || 0,
                 name: song.al?.name || song.album?.name || '未知专辑',
                 picUrl: song.al?.picUrl || song.album?.picUrl || song.al?.coverUrl || song.album?.coverUrl || '',
@@ -438,16 +438,16 @@ const loadSearch = async (keywords: any, type: any = null, isLoadMore = false) =
               },
               source: 'netease', type: SEARCH_TYPE.MUSIC, 
               privilege: song.privilege, fee: song.fee, sq: song.sq, hr: song.hr, pl: song.pl,
-            };
-          });
+          };
+        });
         }
       }
 
       if (isLoadMore && searchDetail.value) {
         searchDetail.value.albums = [...searchDetail.value.albums, ...albumsToSet];
         searchDetail.value.songs = [...searchDetail.value.songs, ...songsFromAlbum];
-      } else {
-        searchDetail.value = {
+    } else {
+      searchDetail.value = {
           songs: songsFromAlbum, // 专辑附带的歌曲
           albums: albumsToSet, playlists: [], mvs: [], kwSongs: [] // 其他类型清空
         };

@@ -48,7 +48,8 @@ class AudioService {
   private operationLockTimer: NodeJS.Timeout | null = null;
   private operationLockTimeout = 5000; // 5秒超时
   private operationLockStartTime: number = 0;
-  private operationLockId: string = '';
+  private operationLockId: string = ''; // 用于追踪当前锁的持有者
+  private lockAcquisitionAttempts: Record<string, number> = {}; // 记录锁获取尝试
 
   constructor() {
     if ('mediaSession' in navigator) {
@@ -57,10 +58,10 @@ class AudioService {
     // 从本地存储加载 EQ 开关状态
     const bypassState = localStorage.getItem('eqBypass');
     this.bypass = bypassState ? JSON.parse(bypassState) : false;
-    
+
     // 页面加载时立即强制重置操作锁
     this.forceResetOperationLock();
-    
+
     // 添加页面卸载事件，确保离开页面时清除锁
     window.addEventListener('beforeunload', () => {
       this.forceResetOperationLock();
@@ -247,10 +248,11 @@ class AudioService {
       if (!keepContext && this.context) {
         try {
           await this.context.close();
-          this.context = null;
+          console.log('[AudioService] AudioContext closed.');
         } catch (e) {
-          console.warn('关闭音频上下文时出错:', e);
+          console.warn('[AudioService] Error closing AudioContext:', e);
         }
+        this.context = null;
       }
     } catch (error) {
       console.error('清理EQ资源时出错:', error);
@@ -374,143 +376,122 @@ class AudioService {
   }
 
   // 设置操作锁，带超时自动释放
-  private setOperationLock(): boolean {
-    // 生成唯一的锁ID
-    const lockId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
-    
-    // 如果锁已经存在，检查是否超时
+  private setOperationLock(operationId: string): boolean {
+    const newLockId = operationId + '_' + Date.now(); // 为每次尝试获取锁生成唯一ID
+    console.log(`[AudioService setOperationLock] Attempting to acquire lock. Current Lock ID: ${this.operationLockId}, New Attempt ID: ${newLockId}, Locked: ${this.operationLock}`);
+    this.lockAcquisitionAttempts[newLockId] = (this.lockAcquisitionAttempts[newLockId] || 0) + 1;
+
     if (this.operationLock) {
-      const currentTime = Date.now();
-      const lockDuration = currentTime - this.operationLockStartTime;
-      
-      // 如果锁持续时间超过2秒，直接强制重置
-      if (lockDuration > 2000) {
-        console.warn(`操作锁已激活 ${lockDuration}ms，超过安全阈值，强制重置`);
-        this.forceResetOperationLock();
-      } else {
-        console.log(`操作锁激活中，持续时间 ${lockDuration}ms`);
-        return false;
+      const timeSinceLock = Date.now() - this.operationLockStartTime;
+      console.warn(
+        `[AudioService setOperationLock] Failed to acquire lock (ID: ${newLockId}). Operation already in progress by Lock ID: ${this.operationLockId}. Locked for ${timeSinceLock}ms. Attempt #${this.lockAcquisitionAttempts[newLockId]}`
+      );
+      if (timeSinceLock > this.operationLockTimeout) {
+        console.error(
+          `[AudioService setOperationLock] Previous operation (Lock ID: ${this.operationLockId}) exceeded timeout (${this.operationLockTimeout}ms). Forcing lock reset.`
+        );
+        this.forceResetOperationLock(); // 强制重置
+        // 再次尝试获取锁
+        this.operationLock = true;
+        this.operationLockId = newLockId; // 使用新的唯一ID
+        this.operationLockStartTime = Date.now();
+        console.log(`[AudioService setOperationLock] Lock acquired by force (New Lock ID: ${this.operationLockId}) after previous timeout.`);
+        // 清除旧的定时器，启动新的
+        if (this.operationLockTimer) clearTimeout(this.operationLockTimer);
+        this.operationLockTimer = setTimeout(() => {
+          if (this.operationLock && this.operationLockId === newLockId) { // 确保是当前锁超时
+            console.error(
+              `[AudioService setOperationLock] Lock (ID: ${this.operationLockId}) timed out after forced acquisition. Releasing.`
+            );
+            this.releaseOperationLock(newLockId, 'timeout_after_force');
+          }
+        }, this.operationLockTimeout);
+        return true;
       }
+      return false;
     }
-    
     this.operationLock = true;
+    this.operationLockId = newLockId; // 使用新的唯一ID
     this.operationLockStartTime = Date.now();
-    this.operationLockId = lockId;
-    
-    // 将锁信息存储到 localStorage（仅用于调试，实际不依赖此值）
-    try {
-      localStorage.setItem('audioOperationLock', JSON.stringify({
-        id: this.operationLockId,
-        startTime: this.operationLockStartTime
-      }));
-    } catch (error) {
-      console.error('存储操作锁信息失败:', error);
-    }
-    
-    // 清除之前的定时器
-    if (this.operationLockTimer) {
-      clearTimeout(this.operationLockTimer);
-    }
-    
-    // 设置超时自动释放锁
+    console.log(`[AudioService setOperationLock] Lock acquired (New Lock ID: ${this.operationLockId}). Attempt #${this.lockAcquisitionAttempts[newLockId]}`);
+    if (this.operationLockTimer) clearTimeout(this.operationLockTimer); // 清除可能存在的旧计时器
     this.operationLockTimer = setTimeout(() => {
-      console.warn('操作锁超时自动释放');
-      this.releaseOperationLock();
+      if (this.operationLock && this.operationLockId === newLockId) { // 确保是当前锁超时
+        console.error(
+          `[AudioService setOperationLock] Lock (ID: ${this.operationLockId}) timed out. Releasing. Operation: ${operationId}`
+        );
+        // 主动释放锁，并传递原始的 operationId 或 newLockId
+        this.releaseOperationLock(newLockId, 'timeout');
+      }
     }, this.operationLockTimeout);
-    
     return true;
   }
-  
+
   // 释放操作锁
-  public releaseOperationLock(): void {
-    this.operationLock = false;
-    this.operationLockStartTime = 0;
-    
-    // 从 localStorage 中移除锁信息
-    try {
-      localStorage.removeItem('audioOperationLock');
-    } catch (error) {
-      console.error('清除存储的操作锁信息失败:', error);
+  public releaseOperationLock(callerLockId?: string, reason?: string): void {
+    // 只有当传入的 callerLockId 与当前持有的 operationLockId 匹配，或者没有传入 callerLockId (允许无条件释放，需谨慎)
+    // 或者是一个特殊的强制释放信号（例如 reason === 'force_reset'）时才释放
+    if (this.operationLockId && callerLockId && this.operationLockId !== callerLockId) {
+      console.warn(`[AudioService releaseOperationLock] Attempt to release lock with mismatched ID. Current Lock ID: ${this.operationLockId}, Caller Lock ID: ${callerLockId}. Reason: ${reason || 'N/A'}. Lock not released by this call.`);
+      return;
     }
-    
+
     if (this.operationLockTimer) {
       clearTimeout(this.operationLockTimer);
       this.operationLockTimer = null;
     }
+    const releasedLockId = this.operationLockId; // 保存被释放的锁ID
+    this.operationLock = false;
+    this.operationLockId = ''; // 清空锁ID
+    this.operationLockStartTime = 0;
+    // 清理这个 specific lock ID 的获取尝试次数记录
+    if (callerLockId && this.lockAcquisitionAttempts[callerLockId]) {
+      delete this.lockAcquisitionAttempts[callerLockId];
+    } else if (releasedLockId && this.lockAcquisitionAttempts[releasedLockId]) {
+      // 如果没有 callerLockId 但成功释放了当前的锁，也尝试清理
+      delete this.lockAcquisitionAttempts[releasedLockId];
+    }
+
+    console.log(`[AudioService releaseOperationLock] Lock released. Released Lock ID: ${releasedLockId}. Triggered by Lock ID: ${callerLockId || 'N/A'}. Reason: ${reason || 'N/A'}`);
   }
 
   // 强制重置操作锁，用于特殊情况
   public forceResetOperationLock(): void {
-    console.log('强制重置操作锁');
-    this.operationLock = false;
-    this.operationLockStartTime = 0;
-    this.operationLockId = '';
-    
     if (this.operationLockTimer) {
       clearTimeout(this.operationLockTimer);
       this.operationLockTimer = null;
     }
-    
-    // 清除存储的锁
-    localStorage.removeItem('audioOperationLock');
+    const previousLockId = this.operationLockId;
+    this.operationLock = false;
+    this.operationLockId = '';
+    this.operationLockStartTime = 0;
+    this.lockAcquisitionAttempts = {}; // 清空所有尝试记录
+    console.warn(`[AudioService forceResetOperationLock] Operation lock forcefully reset. Previous Lock ID: ${previousLockId || 'N/A'}`);
+    // 在这里可以添加一个事件发射，通知外部锁已被强制重置，如果外部逻辑需要感知的话
+    this.emit('operationLockForceReset', previousLockId);
   }
 
   // 播放控制相关
   play(url?: string, track?: SongResult, isPlay: boolean = true): Promise<Howl> {
-    // 每次调用play方法时，尝试强制重置锁（注意：仅在页面刷新后的第一次播放时应用）
-    if (!this.currentSound) {
-      console.log('首次播放请求，强制重置操作锁');
-      this.forceResetOperationLock();
-    }
-    
-    // 如果操作锁已激活，但持续时间超过安全阈值，强制重置
-    if (this.operationLock) {
-      const currentTime = Date.now();
-      const lockDuration = currentTime - this.operationLockStartTime;
-      
-      if (lockDuration > 2000) {
-        console.warn(`操作锁已激活 ${lockDuration}ms，超过安全阈值，强制重置`);
-        this.forceResetOperationLock();
-      }
-    }
-    
-    // 获取锁
-    if (!this.setOperationLock()) {
-      console.log('audioService: 操作锁激活，强制执行当前播放请求');
-      
-      // 如果只是要继续播放当前音频，直接执行
-      if (this.currentSound && !url && !track) {
-        if (this.seekLock && this.seekDebounceTimer) {
-          clearTimeout(this.seekDebounceTimer);
-          this.seekLock = false;
-        }
-        this.currentSound.play();
-        return Promise.resolve(this.currentSound);
-      }
-      
-      // 强制释放锁并继续执行
-      this.forceResetOperationLock();
-      
-      // 这里不再返回错误，而是继续执行播放逻辑
+    const operationId = track ? `play-${track.name}` : `play-${url ? url.substring(0, 30) : 'unknown'}`;
+    // 尝试获取操作锁
+    if (!this.setOperationLock(operationId)) {
+      const errorMessage = `[AudioService Play] Could not acquire operation lock for playing: ${track?.name || url}. Operation already in progress by lock ID: ${this.operationLockId}`;
+      console.error(errorMessage);
+      this.emit('error', {
+        message: i18n.global.t('message.musicIsLoading'),
+        type: 'play',
+        track,
+        details: `Operation lock busy by: ${this.operationLockId}`
+      });
+      return Promise.reject(new Error(errorMessage));
     }
 
-    // 如果没有提供新的 URL 和 track，且当前有音频实例，则继续播放
-    if (this.currentSound && !url && !track) {
-      // 如果有进行中的seek操作，等待其完成
-      if (this.seekLock && this.seekDebounceTimer) {
-        clearTimeout(this.seekDebounceTimer);
-        this.seekLock = false;
-      }
-      this.currentSound.play();
-      this.releaseOperationLock();
-      return Promise.resolve(this.currentSound);
-    }
+    // 保留当前锁的ID，用于后续释放
+    const acquiredLockId = this.operationLockId;
 
-    // 如果没有提供必要的参数，返回错误
-    if (!url || !track) {
-      this.releaseOperationLock();
-      return Promise.reject(new Error('缺少必要参数: url和track'));
-    }
+    console.log(`[AudioService Play] Lock acquired (${acquiredLockId}) for track:`, track?.name, 'URL:', url);
+    this.retryCount = 0; // 重置重试计数器
 
     return new Promise<Howl>((resolve, reject) => {
       let retryCount = 0;
@@ -578,7 +559,7 @@ class AudioService {
               } else {
                 // 发送URL过期事件，通知外部需要重新获取URL
                 this.emit('url_expired', this.currentTrack);
-                this.releaseOperationLock();
+                this.releaseOperationLock(acquiredLockId, 'onloaderror');
                 reject(new Error('音频加载失败，请尝试切换其他歌曲'));
               }
             },
@@ -591,7 +572,7 @@ class AudioService {
               } else {
                 // 发送URL过期事件，通知外部需要重新获取URL
                 this.emit('url_expired', this.currentTrack);
-                this.releaseOperationLock();
+                this.releaseOperationLock(acquiredLockId, 'onplayerror');
                 reject(new Error('音频播放失败，请尝试切换其他歌曲'));
               }
             },
@@ -648,7 +629,7 @@ class AudioService {
           }
         } catch (error) {
           console.error('Error creating audio instance:', error);
-          this.releaseOperationLock();
+          this.releaseOperationLock(acquiredLockId, 'error_creating_instance');
           reject(error);
         }
       };
@@ -656,7 +637,7 @@ class AudioService {
       tryPlay();
     }).finally(() => {
       // 无论成功或失败都解除操作锁
-      this.releaseOperationLock();
+      this.releaseOperationLock(acquiredLockId, 'play_completed');
     });
   }
 
@@ -668,34 +649,29 @@ class AudioService {
     return this.currentTrack;
   }
 
-  stop() {
-    // 强制重置操作锁并继续执行
-    this.forceResetOperationLock();
-    
-    try {
-      if (this.currentSound) {
-        try {
-          // 确保任何进行中的seek操作被取消
-          if (this.seekLock && this.seekDebounceTimer) {
-            clearTimeout(this.seekDebounceTimer);
-            this.seekLock = false;
-          }
-          this.currentSound.stop();
-          this.currentSound.unload();
-        } catch (error) {
-          console.error('停止音频失败:', error);
-        }
-        this.currentSound = null;
-      }
-      
-      this.currentTrack = null;
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.playbackState = 'none';
-      }
-      this.disposeEQ();
-    } catch (error) {
-      console.error('停止音频时发生错误:', error);
+  stop(keepEQSetup = false) {
+    const operationId = `stop-${this.currentTrack?.name || 'current'}`;
+    if (!this.setOperationLock(operationId)) {
+      console.warn(`[AudioService Stop] Could not acquire lock for stopping. Operation: ${this.operationLockId} in progress.`);
+      // 通常stop操作即使未获得锁也应该尝试执行，或者至少标记需要停止
+      // 但为了避免状态混乱，如果严格要求锁，可以提前返回
+      // return; 
     }
+    const acquiredLockId = this.operationLockId;
+    console.log(`[AudioService Stop] Lock acquired (${acquiredLockId}) for stop operation.`);
+
+    if (this.currentSound) {
+      console.log(`[AudioService Stop] Stopping track: ${this.currentTrack?.name}`);
+      this.currentSound.stop(); // Howler's stop will trigger 'onstop'
+      // Unload should happen after onstop or if explicitly clearing
+      // this.currentSound.unload(); // Moved to a more controlled place or ensure 'onstop' handles it.
+      if (!keepEQSetup) {
+        this.disposeEQ(); // 停止时通常也清理EQ，除非特殊说明
+      }
+    }
+    // 无论如何，stop操作完成后应该释放锁
+    this.releaseOperationLock(acquiredLockId, 'stop_completed');
+    // this.currentTrack = null; // 清理当前轨道信息应在更高层处理
   }
 
   setVolume(volume: number) {
@@ -706,37 +682,55 @@ class AudioService {
   }
 
   seek(time: number) {
-    // 直接强制重置操作锁
-    this.forceResetOperationLock();
-    
-    if (this.currentSound) {
-      try {
-        // 直接执行seek操作
-        this.currentSound.seek(time);
-        // 触发seek事件
-        this.updateMediaSessionPositionState();
-        this.emit('seek', time);
-      } catch (error) {
-        console.error('Seek操作失败:', error);
+    const operationId = `seek-${this.currentTrack?.name || 'current'}-${time}`;
+    if (!this.setOperationLock(operationId)) {
+      console.warn(`[AudioService Seek] Could not acquire lock for seeking. Operation: ${this.operationLockId} in progress.`);
+      return; // Seek操作通常可以被跳过如果锁被占用
+    }
+    const acquiredLockId = this.operationLockId;
+    console.log(`[AudioService Seek] Lock acquired (${acquiredLockId}) for seek operation.`);
+
+    if (this.currentSound && this.currentSound.state() === 'loaded') {
+      if (this.seekDebounceTimer) {
+        clearTimeout(this.seekDebounceTimer);
       }
+      this.seekDebounceTimer = setTimeout(() => {
+        if (this.currentSound && this.currentSound.duration() > 0) {
+          const newTime = Math.max(0, Math.min(time, this.currentSound.duration()));
+          console.log(`[AudioService Seek] Seeking to: ${newTime} for track ${this.currentTrack?.name}`);
+          this.currentSound.seek(newTime);
+          // Howler's seek will trigger 'onseek'
+        } else {
+          console.warn(`[AudioService Seek] Cannot seek. Sound not ready or duration is 0. Track: ${this.currentTrack?.name}`);
+        }
+        this.seekLock = false;
+        this.releaseOperationLock(acquiredLockId, 'seek_debounced'); // 防抖后执行完seek，释放锁
+      }, 300); // 300ms 防抖
+    } else {
+      console.warn(`[AudioService Seek] Cannot seek. Sound not loaded. Track: ${this.currentTrack?.name}`);
+      this.releaseOperationLock(acquiredLockId, 'seek_sound_not_loaded'); // 未能seek，也要释放锁
     }
   }
 
   pause() {
-    this.forceResetOperationLock();
-    
-    if (this.currentSound) {
-      try {
-        // 确保任何进行中的seek操作被取消
-        if (this.seekLock && this.seekDebounceTimer) {
-          clearTimeout(this.seekDebounceTimer);
-          this.seekLock = false;
-        }
-        this.currentSound.pause();
-      } catch (error) {
-        console.error('暂停音频失败:', error);
-      }
+    // Pause操作通常比较轻量，可以不严格要求锁，或者使用一个更短的超时/特定类型的锁
+    // 但为了统一，这里还是尝试获取锁
+    const operationId = `pause-${this.currentTrack?.name || 'current'}`;
+    if (!this.setOperationLock(operationId)) {
+      console.warn(`[AudioService Pause] Could not acquire lock for pausing. Operation: ${this.operationLockId} in progress.`);
+      // 如果获取不到锁，是否强行暂停？取决于业务需求
+      // if (this.currentSound?.playing()) this.currentSound.pause();
+      return;
     }
+    const acquiredLockId = this.operationLockId;
+    console.log(`[AudioService Pause] Lock acquired (${acquiredLockId}) for pause operation.`);
+
+    if (this.currentSound && this.currentSound.playing()) {
+      console.log(`[AudioService Pause] Pausing track: ${this.currentTrack?.name}`);
+      this.currentSound.pause(); // Howler's pause will trigger 'onpause'
+    }
+    // pause 操作完成后也应该释放锁
+    this.releaseOperationLock(acquiredLockId, 'pause_completed');
   }
 
   clearAllListeners() {
