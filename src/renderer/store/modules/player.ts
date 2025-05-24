@@ -84,14 +84,23 @@ export const getSongUrl = async (
       if (neteaseApiData?.data?.[0]?.url) {
         officialSongInfo = neteaseApiData.data[0];
         officialUrl = officialSongInfo.url;
+
+        // 尝试将 HTTP URL 升级到 HTTPS
+        if (officialUrl && officialUrl.startsWith('http://')) {
+          const httpsUrl = officialUrl.replace('http://', 'https://');
+          console.log(`[PlayerStore GetSongUrl] Netease: Official URL was HTTP, upgraded to HTTPS for trial: ${httpsualUrl}`);
+          officialUrl = httpsUrl;
+          officialSongInfo.url = httpsUrl; //确保后续使用的 song 对象中的 url 也是最新的
+        }
+
         console.log('[PlayerStore GetSongUrl] Netease: Official API success. URL:', officialUrl, 'SongInfo:', JSON.stringify(officialSongInfo));
 
         // --- Refined check for VIP/Trial/Unavailable ---
         let needsUnblock = false;
         const song = officialSongInfo;
 
-        // 场景1: fee 为 1 (VIP歌曲) 或 4 (付费专辑)
-        if (song.fee === 1 || song.fee === 4) {
+        // 场景1: fee 为 1 (VIP歌曲) 或 4 (付费专辑) 或 8 (也是VIP一种)
+        if (song.fee === 1 || song.fee === 4 || song.fee === 8) {
           if (!song.freeTrialInfo && (!song.br || song.br <= 0)) {
             // 没有试听信息，并且码率无效或为0 (表示无法直接播放)
             needsUnblock = true;
