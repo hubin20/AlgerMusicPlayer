@@ -99,7 +99,7 @@ export const getSongUrl = async (
           } else if (song.freeTrialInfo) {
             // 有试听信息，也认为需要解灰以获取完整版
             needsUnblock = true;
-            console.log('[PlayerStore GetSongUrl] Netease: Official URL is trial. Marked for unblock. Info:", JSON.stringify({freeTrialInfo: song.freeTrialInfo}));
+            console.log('[PlayerStore GetSongUrl] Netease: Official URL is trial. Marked for unblock. Info:', JSON.stringify({ freeTrialInfo: song.freeTrialInfo }));
           }
         } else if ((!song.br || song.br <= 0) && song.fee === 0 && !song.freeTrialInfo) {
           // 免费歌曲 (fee=0)，但码率无效 (通常意味着灰色，无版权)
@@ -601,6 +601,33 @@ export const usePlayerStore = defineStore('player', () => {
 
       // 获取歌曲详情，包括URL
       const updatedPlayMusic = await getSongDetail(originalMusic);
+
+      // ---- START: Check for stale update ----
+      if (playMusic.value.id !== originalMusic.id) {
+        // 这意味着在等待 getSongDetail(originalMusic) 的过程中，
+        // 全局的 playMusic.value.id 已经被其他歌曲更新了（通过另一次对 handlePlayMusic 的调用）。
+        // 因此，我们为 originalMusic 获取到的 updatedPlayMusic 信息是过时的，不应再用于设置当前播放。
+        console.warn(`[PlayerStore handlePlayMusic] Stale update for song ${originalMusic.name} (ID: ${originalMusic.id}). Player has moved to ${playMusic.value.name} (ID: ${playMusic.value.id}). Discarding this stale update for current playback.`);
+
+        // 可选优化：即使不设置为当前播放，也可以尝试更新播放列表中该歌曲的URL，如果获取成功的话
+        // updatedPlayMusic 包含了从 getSongDetail 获取到的 playMusicUrl
+        if (updatedPlayMusic.playMusicUrl) {
+          const songInPlaylistIndex = playList.value.findIndex(item => item.id === updatedPlayMusic.id && item.source === updatedPlayMusic.source);
+          if (songInPlaylistIndex !== -1) {
+            // 创建一个新的对象来更新，避免直接修改 playList.value[songInPlaylistIndex] 的引用问题
+            const newSongDataInPlaylist = { ...playList.value[songInPlaylistIndex], ...updatedPlayMusic };
+            playList.value.splice(songInPlaylistIndex, 1, newSongDataInPlaylist);
+            console.log(`[PlayerStore handlePlayMusic] Updated song ${updatedPlayMusic.name} (ID: ${updatedPlayMusic.id}) in actual playList with new URL from stale operation.`);
+            localStorage.setItem('playList', JSON.stringify(playList.value)); // 确保播放列表的更新被保存
+          }
+        }
+        // playMusic.value.playLoading = false; // 确保原始歌曲的加载状态被清除，因为它不会被播放
+        // 对于当前实际播放的歌曲 (playMusic.value)，其 playLoading 状态由其自身的 handlePlayMusic 调用管理
+        return false; // 表示本次操作没有成功将歌曲设置为当前播放（因为它过时了）
+      }
+      // ---- END: Check for stale update ----
+
+      // 如果检查通过，说明当前 playMusic.value.id 仍然是 originalMusic.id，可以安全更新
       playMusic.value = updatedPlayMusic;
       playMusicUrl.value = updatedPlayMusic.playMusicUrl as string;
 
